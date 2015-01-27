@@ -1,0 +1,6 @@
+data*
+old*
+out*
+\.DS_Store*
+*.pyc
+*~
