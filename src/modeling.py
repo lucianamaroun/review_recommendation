@@ -71,8 +71,8 @@ def model_votes(reviews):
     the second, the test set.
 """
 def split_votes(votes):
-  sorted_reviews = sorted(reviews.values(), key=lambda r:
-      datetime.datetime.strptime(r['date'], '%d.%m.%Y'))
+  sorted_reviews = sorted(votes, key=lambda v:
+      datetime.datetime.strptime(v['date'], '%d.%m.%Y'))
   cut_point = int(math.ceil(len(votes) / 2.0))
   return votes[:cut_point], votes[cut_point:]
 
@@ -289,7 +289,7 @@ def group_reviews_by_product(reviews):
     the key 'kl'.
 """
 def calculate_kl_divergence(reviews):
-  grouped_reviews = group_by_product(reviews)
+  grouped_reviews = group_reviews_by_product(reviews)
 
   avg_unigram = {}
   total_words = 0
@@ -366,8 +366,9 @@ def group_votes_by_review(votes):
     Returns:
       A dictionary with initialized values representing a user.
 """
-def create_user():
+def create_user(user_id):
   user = {}
+  user['id'] = user_id
   user['num_reviews'] = 0
   user['num_votes_rec'] = 0
   user['num_votes_giv'] = 0
@@ -398,7 +399,7 @@ def add_user_rating(user, rating, product_rating):
   user['num_reviews'] += 1
   user['avg_rating'] += rating
   user['avg_rel_rating'] += rating - product_rating
-  user['rating'].append(rating)
+  user['sd_ratings'].append(rating)
 
 
 """ Adds user vote, updating related features.
@@ -415,12 +416,12 @@ def add_user_rating(user, rating, product_rating):
 def add_user_vote(reviewer, rater, vote, avg_help):
   reviewer['num_votes_rec'] += 1
   reviewer['avg_help_rec'] += vote
-  reviewer['help_rec'].append(vote)
+  reviewer['sd_help_rec'].append(vote)
 
   rater['num_votes_giv'] += 1
   rater['avg_help_giv'] += vote
   rater['avg_rel_help_giv'] +=  vote - avg_help
-  rater['help_giv'].append(vote)
+  rater['sd_help_giv'].append(vote)
 
 
 """ Finalizes user features, normalizing or aggregating features.
@@ -481,7 +482,7 @@ def model_users(reviews, train, trusts):
   for review_id in grouped_train:
     review = reviews[review_id]
     if review['user'] not in users:
-      rev_dict = initialize_user_features(review['user'])
+      rev_dict = create_user(review['user'])
       users[review['user']] = rev_dict
     product_rating = products[review['product']]['avg_rating']
     add_user_rating(users[review['user']], review['rating'], product_rating)
@@ -489,7 +490,7 @@ def model_users(reviews, train, trusts):
         len(grouped_train[review_id])
     for vote in grouped_train[review_id]:
       if vote['rater'] not in users:
-        rat_dict = initialize_user_features(vote['rater'])
+        rat_dict = create_user(vote['rater'])
         users[vote['rater']] = rat_dict
       add_user_vote(users[review['user']], users[vote['rater']], vote['vote'], avg_help)
   for trustor in trusts:
@@ -514,7 +515,7 @@ def model_users(reviews, train, trusts):
 def model_products(reviews, train):
   selected_reviews = {}
   for vote in train:
-    selected_reviews[vote['review_id']] = reviews[vote['review_id']]
+    selected_reviews[vote['review']] = reviews[vote['review']]
   grouped_reviews = group_reviews_by_product(selected_reviews)
   products = {}
   for product in grouped_reviews:
