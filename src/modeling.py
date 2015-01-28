@@ -12,7 +12,9 @@ import math
 import datetime
 import nltk
 import numpy
-import threading
+#import threading
+import multiprocessing
+import time
 
 from textblob import TextBlob
 from nltk.tokenize import word_tokenize, wordpunct_tokenize, RegexpTokenizer, \
@@ -28,38 +30,8 @@ _NUM_THREADS = 8
 _TRAIN_FILE = '/var/tmp/luciana/train.csv'
 _TEST_FILE = '/var/tmp/luciana/test.csv'
 _SAMPLE = True
-_SAMPLE_RATIO = 0.1
-
-
-
-class reviewModelThread(threading.Thread):
-  """ Class of the threads used for generating review models.
-
-      Args:
-        self: the thread object reference.
-        thread_id: the id assigned to the thread.
-        reviews: the list of reviews assigned to this thread.
-        results: the list of results where the threads should write. The thread
-      writes at index results[thread_id].
-  """
-  def __init__(self, thread_id, reviews, results):
-    threading.Thread.__init__(self)
-    self.thread_id = thread_id
-    self.reviews = reviews
-    self.results = results
-
-  """ Runs a thread for review modeling.
-
-      Args:
-        self: the thread object reference.
-
-      Returns:
-        None. The result is stored in results[thread_id].
-  """
-  def run(self):
-    print 'Starting thread %d - %f' % (self.thread_id, time.time())
-    self.results[self.thread_id] = model_reviews(self.reviews)
-    print 'Ending thread %d - %f' % (self.thread_id, time.time())
+_SAMPLE_RATIO = 0.01
+_CHUNK = 100
 
 
 """ Models votes with basic identification data (review id, reviewer id, rater
@@ -113,16 +85,14 @@ def split_votes(votes):
     Returns:
       A dictionary of reviews with modeled features.
 """
-def model_reviews(sample_reviews=None):
-  reviews = {}
-  source = sample_reviews if sample_reviews else parser.parse_reviews()
-  for review in source: # does it work with iterator?
-    text_feat = get_textual_features(review['text'])
-    for feat in text_feat:
-        review[feat] = text_feat[feat]
-    reviews[review['id']] = review
-  kl_divergence(reviews)
-  return reviews
+def model_review(raw_review):
+  review = {}
+  for feat in raw_review:
+    review[feat] = raw_review[feat] 
+  text_feat = get_textual_features(review['text'])
+  for feat in text_feat:
+      review[feat] = text_feat[feat]
+  return review
 
 
 """ Reports different features derived from text, related to length, syntax,
@@ -565,28 +535,24 @@ def model_products(reviews, train):
 def model_reviews_parallel(sample_raw_reviews=None):
   raw_reviews = sample_raw_reviews if sample_raw_reviews else [r for r in
       parser.parse_reviews()]
-  threads = []
-  review_count = len(sample_raw_reviews)
-  block_size = int(math.ceil(float(review_count) / _NUM_THREADS))
 
-  results = [None] * _NUM_THREADS
-  for i in range(_NUM_THREADS):
-    if i < (_NUM_THREADS - 1):
-      threads.append(modelThread(i, raw_reviews[block_size*i:block_size*(i+1)],
-          results))
-    else:
-      threads.append(modelThread(i, raw_reviews[block_size*i:], results))
-    threads[-1].start()
+  pool = multiprocessing.Pool(processes=_NUM_THREADS)
+  result = pool.imap_unordered(model_review, iter(raw_reviews), _CHUNK)
+  pool.close()
+  print 'Waiting for processes'
+  pool.join()
+  print 'Processes have finished'
 
-  print 'Waiting for threads'
-  for thread in threads:
-    thread.join()
-  print 'Threads have finished'
+  print 'Creating dict'
+  reviews = {review['id']:review for review in result}
 
-  print 'Unifying dicts'
-  reviews = {}
-  for dict_review in results:
-    reviews.update(dict_review)
+  print 'Lenght of dictionary %d' % len(reviews)
+
+  print 'Calculating KL divergence'
+  calculate_kl_divergence(reviews)
+      # cannot be parallelized without concurrence control
+      # Correction: it is possible dividing by product
+
   return reviews
 
 
@@ -648,7 +614,7 @@ def output_model(train, test, reviews, users_train, users_test, products, trusts
   test_f = open(_TEST_FILE, 'w')
 
   for out in [train_f, test_f]:
-    print >> out, 'review_id,reviewer_id,rater_id,' +\
+    print >> out, 'review_id,reviewer_id,rater_id,rating,rel_rating,' +\
         'num_tokens,num_sents,unique_ratio,avg_sent,cap_ratio' +\
         ',noun_ratio,adj_ratio,adv_ratio,verb_ratio,comp_ratio,fw_ratio,' +\
         'sym_ratio,num_ratio,punct_ratio,' +\
@@ -667,7 +633,7 @@ def output_model(train, test, reviews, users_train, users_test, products, trusts
       rtr = users[vote['rater']]
       trust = 1 if vote['rater'] in trusts and r['user'] in \
           trusts[vote['rater']] else 0
-      print >> out, '%s,%s,%s,' +\
+      print >> out, '%s,%s,%s,%d,%f' +\
           '%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,' +\
           '%d,%f,%f,%f,%d,%d,%f,%f,%f,%f,%f,' +\
           '%d,%f,%f,%f,%d,%d,%f,%f,%f,%f,%f,' +\
