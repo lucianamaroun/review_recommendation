@@ -12,9 +12,10 @@ import math
 import datetime
 import nltk
 import numpy
-#import threading
 import multiprocessing
 import time
+import copy
+import networkx as nx
 
 from textblob import TextBlob
 from nltk.tokenize import word_tokenize, wordpunct_tokenize, RegexpTokenizer, \
@@ -86,9 +87,7 @@ def split_votes(votes):
       A dictionary of reviews with modeled features.
 """
 def model_review(raw_review):
-  review = {}
-  for feat in raw_review:
-    review[feat] = raw_review[feat] 
+  review = copy.deepcopy(raw_review)
   text_feat = get_textual_features(review['text'])
   for feat in text_feat:
       review[feat] = text_feat[feat]
@@ -373,9 +372,35 @@ def create_user(user_id):
   user['num_votes_rec'] = 0
   user['num_votes_giv'] = 0
   user['avg_rating'] = 0
-  user['sd_ratings'] = []
+  user['sd_rating'] = []
   user['sd_help_rec'] = []
   user['sd_help_giv'] = []
+  user['avg_rel_rating'] = 0
+  user['avg_help_rec'] = 0
+  user['avg_help_giv'] = 0
+  user['avg_rel_help_giv'] = 0
+  user['num_trustees'] = 0
+  user['num_trustors'] = 0
+  return user
+
+
+""" Creates empty dummy user for cold start.
+
+    Args:
+      None.
+
+    Returns:
+      A dictionary with initialized values representing a user.
+"""
+def get_empty_user():
+  user = {}
+  user['num_reviews'] = 0
+  user['num_votes_rec'] = 0
+  user['num_votes_giv'] = 0
+  user['avg_rating'] = 0
+  user['sd_rating'] = 0
+  user['sd_help_rec'] = 0
+  user['sd_help_giv'] = 0
   user['avg_rel_rating'] = 0
   user['avg_help_rec'] = 0
   user['avg_help_giv'] = 0
@@ -397,9 +422,9 @@ def create_user(user_id):
 """
 def add_user_rating(user, rating, product_rating):
   user['num_reviews'] += 1
-  user['avg_rating'] += rating
-  user['avg_rel_rating'] += rating - product_rating
-  user['sd_ratings'].append(rating)
+  user['avg_rating'] += float(rating)
+  user['avg_rel_rating'] += float(rating) - product_rating
+  user['sd_rating'].append(float(rating))
 
 
 """ Adds user vote, updating related features.
@@ -415,13 +440,13 @@ def add_user_rating(user, rating, product_rating):
 """
 def add_user_vote(reviewer, rater, vote, avg_help):
   reviewer['num_votes_rec'] += 1
-  reviewer['avg_help_rec'] += vote
+  reviewer['avg_help_rec'] += int(vote)
   reviewer['sd_help_rec'].append(vote)
 
   rater['num_votes_giv'] += 1
-  rater['avg_help_giv'] += vote
-  rater['avg_rel_help_giv'] +=  vote - avg_help
-  rater['sd_help_giv'].append(vote)
+  rater['avg_help_giv'] += int(vote)
+  rater['avg_rel_help_giv'] +=  float(vote) - avg_help
+  rater['sd_help_giv'].append(float(vote))
 
 
 """ Finalizes user features, normalizing or aggregating features.
@@ -432,7 +457,8 @@ def add_user_vote(reviewer, rater, vote, avg_help):
     Returns:
       None. Changes are made in place.
 """
-def finalize_user_features(users):
+def finalize_user_features(users, trusts):
+  pagerank = nx.pagerank(trusts)
   for user in users:
     if users[user]['num_reviews'] != 0:
       users[user]['avg_rating'] /= float(users[user]['num_reviews'])
@@ -445,6 +471,7 @@ def finalize_user_features(users):
       if users[user]['num_votes_giv'] != 0:
         users[user]['avg_help_giv'] /= float(users[user]['num_votes_giv'])
         users[user]['avg_rel_help_giv'] /= float(users[user]['num_votes_giv'])
+    users[user]['pagerank'] = pagerank[user] if user in pagerank else 0.0
 
 
 """ Includes trust relation under trustor and trustee statistics.
@@ -468,7 +495,7 @@ def account_trust_relation(trustor, trustee):
     Args:
       reviews: a dictionary with modeled reviews.
       train: a list of votes used as train.
-      trusts: a dictionary of sets containing trust relations.
+      trusts: a networkx DiGraph object. 
 
     Returns:
       A dictionary of users indexed by user ids.
@@ -476,8 +503,7 @@ def account_trust_relation(trustor, trustee):
 def model_users(reviews, train, trusts):
   users = {} #parser.get_userstat()
   products = model_products(reviews, train)
-  # does not requiring model because in the great majority of times the same review is in the same set
-
+  
   grouped_train = group_votes_by_review(train)
   for review_id in grouped_train:
     review = reviews[review_id]
@@ -497,7 +523,7 @@ def model_users(reviews, train, trusts):
     for trustee in trusts[trustor]:
       account_trust_relation(users[trustor] if trustor in users else None, users[trustee] if
           trustee in users else None)
-  finalize_user_features(users)
+  finalize_user_features(users, trusts)
 
   return users
 
@@ -588,11 +614,10 @@ def model():
   products = model_products(reviews, train)
 
   print 'Modeling users'
-  users_train = model_users(reviews, train, trusts)
-  users_test = model_users(reviews, train + test, trusts) # cumulative reviews
+  users = model_users(reviews, train, trusts)
 
   print 'Outputting'
-  output_model(train, test, reviews, users_train, users_test, products, trusts)
+  output_model(train, test, reviews, users, products, trusts)
 
 
 """ Outputs feature model.
@@ -601,16 +626,14 @@ def model():
       train: a list of votes belonging to train set.
       test: the list of votes belonging to test set.
       reviews: a dictionary of reviews.
-      users_train: a dictionary of users with aggregated information from train
+      users: a dictionary of users with aggregated information from train
     set.
-      users_test: a dictionary of users with aggregated information from test
-    set.
-      trusts: a dictionary of sets contaning trust relations.
+      trusts: a networkx DiGraph object. 
 
     Returns:
       None. The output is inserted in _TRAIN_FILE and _TEST_FILE.
 """
-def output_model(train, test, reviews, users_train, users_test, products, trusts):
+def output_model(train, test, reviews, users, products, trusts):
   train_f = open(_TRAIN_FILE, 'w')
   test_f = open(_TEST_FILE, 'w')
 
@@ -622,25 +645,36 @@ def output_model(train, test, reviews, users_train, users_test, products, trusts
         'pos_sent,neg_sent,pos_ratio,neg_ratio,kl_div,' +\
         'r_num_reviews,r_avg_rating,r_avg_rel_rating,r_avg_help_rec,' +\
         'r_num_trustors,r_num_trustees,r_avg_help_giv,r_avg_rel_help_giv,' +\
-        'r_sd_rating,r_sd_help_rec,r_sd_help_giv,' +\
+        'r_sd_rating,r_sd_help_rec,r_sd_help_giv,r_pagerank,' +\
         'u_num_reviews,u_avg_rating,u_avg_rel_rating,u_avg_help_rec,' +\
         'u_num_trustors,u_num_trustees,u_avg_help_giv,u_avg_rel_help_giv,' +\
-        'u_sd_rating,u_sd_help_rec,u_sd_help_giv,trust,truth'
+        'u_sd_rating,u_sd_help_rec,u_sd_help_giv,u_pagerank,trust,truth'
 
-  for partition, out, users in [(train, train_f, users_train), (test, test_f, users_test)]:
+  for partition, out in [(train, train_f), (test, test_f)]:
     for vote in partition:
       r = reviews[vote['review']]
-      rvr = users[r['user']]
-      rtr = users[vote['rater']]
+      rvr = users[r['user']] if r['user'] in users else get_empty_user()
+      rtr = users[vote['rater']] if vote['rater'] in users else get_empty_user()
       trust = 1 if vote['rater'] in trusts and r['user'] in \
           trusts[vote['rater']] else 0
+      print rating
+      print r['num_tokens']
+      print r['num_sents']
+      print rvr['num_reviews']
+      print rvr['num_trustors']
+      print rvr['num_trustees']
+      print rtr['num_reviews']
+      print rtr['num_trustors']
+      print rtr['num_trustees']
+      print trust
+      print vote['vote']
       print >> out, '%s,%s,%s,%d,%f' +\
           '%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,' +\
-          '%d,%f,%f,%f,%d,%d,%f,%f,%f,%f,%f,' +\
-          '%d,%f,%f,%f,%d,%d,%f,%f,%f,%f,%f,' +\
+          '%d,%f,%f,%f,%d,%d,%f,%f,%f,%f,%f,%f,' +\
+          '%d,%f,%f,%f,%d,%d,%f,%f,%f,%f,%f,%f,' +\
           '%d,%d' % (
           r['id'], r['user'], vote['rater'],
-          r['rating'], r['rating'] - products[r['product']],
+          r['rating'], r['rating'] - products[r['product']]['avg_rating'],
           r['num_tokens'],r['num_sents'],r['num_unique'],r['avg_sent'],
           r['cap_sent'],
           r['noun_ratio'],r['adj_ratio'],r['adv_ratio'],r['verb_ratio'],
@@ -650,11 +684,11 @@ def output_model(train, test, reviews, users_train, users_test, products, trusts
           rvr['num_reviews'],rvr['avg_rating'],rvr['avg_rel_rating'],
           rvr['avg_help_rec'],rvr['num_trustors'],rvr['num_trustees'],
           rvr['avg_help_giv'],rvr['avg_rel_help_giv'],rvr['sd_rating'],
-          rvr['sd_help_rec'],rvr['sd_help_giv'],
+          rvr['sd_help_rec'],rvr['sd_help_giv'],rvr['pagerank'],
           rtr['num_reviews'],rtr['avg_rating'],rtr['avg_rel_rating'],
           rtr['avg_help_rec'],rtr['num_trustors'],rtr['num_trustees'],
           rtr['avg_help_giv'],rtr['avg_rel_help_giv'],rtr['sd_rating'],
-          rtr['sd_help_rec'],rtr['sd_help_giv'],
+          rtr['sd_help_rec'],rtr['sd_help_giv'],rtr['pagerank'],
           trust, vote['vote'])
 
   train_f.close()
