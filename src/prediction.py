@@ -28,15 +28,15 @@ _IDS_STOP = 3 # index + 1 where id features end
 _NP_STOP = 25 # index + 1 where non-personalized features end
 _FEAT_STOP = 32 # index + 1 where all the features end
 _PREDICTORS = {'svm': SVC, 'rfc': RandomForestClassifier,
-    'lg': LinearRegression, 'svr': SVR, 'rfr': RandomForestRegressor}
+    'lr': LinearRegression, 'lrb': LinearRegression, 'svr': SVR,
+    'rfr': RandomForestRegressor}
 _SEL_FEAT = set(['r_avg_help_rec', 'u_avg_rel_help_giv', 'u_avg_help_giv',
     'num_tokens', 'unique_ratio', 'num_sents', 'u_num_trustees',
     'u_num_trustors', 'u_avg_rel_rating', 'u_avg_rating', 'r_num_trustees',
-    'noun_ratio', 'avg_sent', 'adj_ratio', 'num_ratio',
-   # 'adv_ratio', 
-   # 'verb_ratio', 'cap_ratio', 'r_num_trustors', 'pos_sent', 'r_avg_rel_rating',
-   # 'r_num_reviews', 'neg_sent', 'r_avg_rating', 'trust', 'fw_ratio',
-   # 'comp_ratio', 'sym_ratio', 'punct_ratio'
+    'noun_ratio', 'avg_sent', 'adj_ratio', 'num_ratio', 'adv_ratio', 
+    'verb_ratio', 'cap_ratio', 'r_num_trustors', 'pos_sent', 'r_avg_rel_rating',
+    'r_num_reviews', 'neg_sent', 'r_avg_rating', 'trust', 'fw_ratio',
+    'comp_ratio', 'sym_ratio', 'punct_ratio'
     ])
 
 """ Reads features and truth values from votes in a data file.
@@ -54,6 +54,7 @@ _SEL_FEAT = set(['r_avg_help_rec', 'u_avg_rel_help_giv', 'u_avg_help_giv',
 def read(data_file, selected_features=None):
   data_np = []
   data_p = []
+  ids = []
   truth = []
   with open(data_file, 'r') as data:
     reader = csv.reader(data)
@@ -62,6 +63,7 @@ def read(data_file, selected_features=None):
       selected_indices = set([i+3 for i in range(len(features)) if features[i] in
           selected_features])
     for row in reader:
+      ids.append(row[:_IDS_STOP])
       data_np.append(np.array([float(f) for f in row[_IDS_STOP:_NP_STOP]]))
       if selected_features:
         data_p.append(np.array([float(row[i]) for i in range(len(row)) if i in
@@ -69,7 +71,7 @@ def read(data_file, selected_features=None):
       else:
         data_p.append(np.array([float(f) for f in row[_IDS_STOP:_FEAT_STOP]]))
       truth.append(int(row[_FEAT_STOP]))
-  return features, data_np, data_p, truth
+  return features, ids, data_np, data_p, truth
 
 
 """ Trains a predictor.
@@ -85,7 +87,7 @@ def read(data_file, selected_features=None):
       A scikit learn classifier object.
 """
 def train(train, truth, pred_code):
-  pred = _PREDICTORS[pred_code]()
+  pred = _PREDICTORS[pred_code]()#kernel='linear', C=1e3)
   pred.fit(train, truth)
   return pred
 
@@ -217,34 +219,65 @@ def rank_features_rfe(features, data, truth):
   return ranking
 
 
+def remove_bias(ids, truth):
+  raters = {}
+  reviews = {}
+  rtr_bias = {}
+  rev_bias = {}
+  all_sum = 0
+  for index, instance in enumerate(ids):
+    rater = instance[2] # rater id
+    review = instance[0] # review id
+    if rater not in raters:
+      raters[rater] = {}
+      raters[rater]['sum'] = 0
+      raters[rater]['count'] = 0
+    raters[rater]['sum'] += truth[index] # truth
+    raters[rater]['count'] += 1
+    if review not in reviews:
+      reviews[review] = {}
+      reviews[review]['sum'] = 0
+      reviews[review]['count'] = 0
+    reviews[review]['sum'] += truth[index] # truth
+    reviews[review]['count'] += 1
+    all_sum += truth[index]
+  all_avg = float(all_sum) / len(truth)
+  for rtr in raters:
+    rtr_bias[rtr] = float(raters[rtr]['sum']) / raters[rtr]['count'] - all_avg
+  for rev in reviews:
+    rev_bias[rev] = float(reviews[rev]['sum']) / reviews[rev]['count'] - all_avg
+  new_truth = truth[:]
+  for index, instance in enumerate(ids):
+    rater = instance[2] # rater id
+    review = instance[0] # review id
+    new_truth[index] -= all_avg + rtr_bias[rater] + rev_bias[review]
+  return all_avg, rtr_bias, rev_bias, new_truth
+
+
+def adjust_bias(avg, rtr_bias, rev_bias, ids, res):
+  new_res = res[:]
+  for index, instance in enumerate(ids):
+    rater = instance[2]
+    review = instance[0]
+    new_res[index] += avg
+    if rater in rtr_bias: # not cold-start rater
+      new_res[index] += rtr_bias[rater]
+    if review in rev_bias: # not cold-start review
+      new_res[index] += rev_bias[review]
+  return new_res
+
+
 """ Compares non-personalized with personalized prediction of helpfulness votes.
 
     Args:
-      train_np: a list of numpy arrays representing train instances with
-    non-personalized features.
-      train_p: a list of numpy arrays representing train instances with
-    personalized features.
-      train_truth: a list with the correct helpfulness values of the train
-    instances.
-      test_np: a list of numpy arrays representing test instances with
-    non-personalized features.
-      test_p: a list of numpy arrays representing test instances with
-    personalized features.
-      test_truth: a list with the correct helpfulness values of the test
-    instances.
-      pred_code: the code indicating the predictor choice used to index
-    _PREDICTORS dictionary.
+      res_np: the predicted values for the non-personalized predictor.
+      res_p: the predicted values for the personalized predictor.
+      test_truth: the truth values.
 
     Returns:
       None. The results are output to stdout.
 """
-def compare(train_np, train_p, train_truth, test_np, test_p, test_truth,
-    pred_code):
-  pred_np = train(train_np, train_truth, pred_code)
-  pred_p = train(train_p, train_truth, pred_code)
-
-  res_np = test(test_np, pred_np)
-  res_p = test(test_p, pred_p)
+def compare(res_np, res_p, test_truth):
 
   print 'Non-Personalized Performance:'
   print 'RMSE: %f' % calculate_rmse(res_np, test_truth)
@@ -278,12 +311,25 @@ def filter_features(features, data, selected):
       None. The results are output to stdout.
 """
 def main(pred_code):
-  features, train_np, train_p, train_truth = read(_TRAIN_FILE, _SEL_FEAT)
-  _, test_np, test_p, test_truth = read(_TEST_FILE, _SEL_FEAT)
+  features, train_ids, train_np, train_p, train_truth = read(_TRAIN_FILE)
+  _, test_ids, test_np, test_p, test_truth = read(_TEST_FILE)
 
   #evaluate_features(features, train_p + test_p, train_truth + test_truth)
 
-  compare(train_np, train_p, train_truth, test_np, test_p, test_truth, pred_code)
+  if pred_code == 'lrb' or pred_code == 'rfr':
+    avg, rtr_bias, rev_bias, train_truth = remove_bias(train_ids, train_truth)
+  
+  pred_np = train(train_np, train_truth, pred_code)
+  pred_p = train(train_p, train_truth, pred_code)
+
+  res_np = test(test_np, pred_np)
+  res_p = test(test_p, pred_p)
+
+  if pred_code == 'lrb' or pred_code == 'rfr':
+    res_np = adjust_bias(avg, rtr_bias, rev_bias, test_ids, res_np)
+    res_p = adjust_bias(avg, rtr_bias, rev_bias, test_ids, res_p)
+  
+  compare(res_np, res_p, test_truth)
 
 
 if __name__ == '__main__':
