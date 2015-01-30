@@ -11,9 +11,9 @@ from nltk.tokenize import wordpunct_tokenize, RegexpTokenizer, sent_tokenize
 from nltk_contrib.readability.textanalyzer import syllables_en
 from nltk.corpus import stopwords
 from textblob import TextBlob
+import networkx as nx
 
 
-_FILEORIG = 'data/rating.txt'
 _FILENEW = 'data/rating_new.txt'
 PUNCTUATION = [';', ':', ',', '.', '!', '?']
     # source: http://www.nltk.org/api/nltk.tokenize.html
@@ -116,11 +116,9 @@ def parses_userstat():
 """
 def parse_trusts():
   f = open('data/trustnetwork.txt', 'r')
-  trust = {}
+  trust = nx.DiGraph()
   for l in f:
     l = l.strip().split('::::')
-    if l[0] not in trust:
-      trust[l[0]] = set()
-    trust[l[0]].add(l[1])
+    trust.add_edge(l[0], l[1])
   f.close()
   return trust
