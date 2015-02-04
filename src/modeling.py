@@ -8,19 +8,16 @@
     on the project root directory.
 """
 
-import math
-import datetime
-import nltk
-import numpy
-import multiprocessing
-import time
-import copy
-import networkx as nx
+from math import ceil, log
+from datetime import datetime
+from copy import deepcopy
+from multiprocessing import Pool
 
+from numpy import std
+from networkx import pagerank
 from textblob import TextBlob
-from nltk.tokenize import word_tokenize, wordpunct_tokenize, RegexpTokenizer, \
-    sent_tokenize
-from nltk.corpus import stopwords
+from nltk.tokenize import wordpunct_tokenize, sent_tokenize
+from nltk import pos_tag
 
 from src import sampler
 from src import parser
@@ -62,7 +59,8 @@ def model_votes(reviews):
 
 
 """ Splits votes between train and test sets. They are sorted chronologically
-    and the first half is used for train and the second, for test.
+    (by review date) and the first half is used for train and the second,
+    for test.
 
     Args:
       votes: a list with votes dictionaries.
@@ -73,8 +71,8 @@ def model_votes(reviews):
 """
 def split_votes(votes):
   sorted_reviews = sorted(votes, key=lambda v:
-      datetime.datetime.strptime(v['date'], '%d.%m.%Y'))
-  cut_point = int(math.ceil(len(votes) / 2.0))
+      datetime.strptime(v['date'], '%d.%m.%Y'))
+  cut_point = int(ceil(len(votes) / 2.0))
   return votes[:cut_point], votes[cut_point:]
 
 
@@ -87,7 +85,7 @@ def split_votes(votes):
       A dictionary of reviews with modeled features.
 """
 def model_review(raw_review):
-  review = copy.deepcopy(raw_review)
+  review = deepcopy(raw_review)
   text_feat = get_textual_features(review['text'])
   for feat in text_feat:
       review[feat] = text_feat[feat]
@@ -145,6 +143,7 @@ def get_text_length_stats(text):
     sents = sent_tokenize(text)
     capsents = capsent_tokenizer.tokenize(text)
 
+    features['num_chars'] = len(text)
     features['num_tokens'] = len(tokens)
     features['num_sents'] = len(sents)
     features['num_unique'] = float(len(set(words))) / len(words)
@@ -174,7 +173,7 @@ def get_pos_stats(text):
     word_tokenizer = RegexpTokenizer(r'\w+')
     words = word_tokenizer.tokenize(text)
 
-    tags = nltk.pos_tag(words)
+    tags = pos_tag(words)
 
     for _, tag in tags:
       if tag.startswith('NN'):
@@ -305,7 +304,7 @@ def calculate_kl_divergence(reviews):
     for review in grouped_reviews[product]:
       review['kl'] = 0
       for word in review['unigram']:
-        review['kl'] += review['unigram'][word] * math.log(review['unigram'][word] /
+        review['kl'] += review['unigram'][word] * log(review['unigram'][word] /
             avg_unigram[word])
       review.pop('unigram', None)
 
@@ -458,14 +457,14 @@ def add_user_vote(reviewer, rater, vote, avg_help):
       None. Changes are made in place.
 """
 def finalize_user_features(users, trusts):
-  pagerank = nx.pagerank(trusts)
+  pagerank = pagerank(trusts)
   for user in users:
     if users[user]['num_reviews'] != 0:
       users[user]['avg_rating'] /= float(users[user]['num_reviews'])
       users[user]['avg_rel_rating'] /= float(users[user]['num_reviews'])
-      users[user]['sd_rating'] = numpy.std(users[user]['sd_rating'], ddof=1)
-      users[user]['sd_help_rec'] = numpy.std(users[user]['sd_help_rec'], ddof=1)
-      users[user]['sd_help_giv'] = numpy.std(users[user]['sd_help_giv'], ddof=1)
+      users[user]['sd_rating'] = std(users[user]['sd_rating'], ddof=1)
+      users[user]['sd_help_rec'] = std(users[user]['sd_help_rec'], ddof=1)
+      users[user]['sd_help_giv'] = std(users[user]['sd_help_giv'], ddof=1)
       if users[user]['num_votes_rec'] != 0:
         users[user]['avg_help_rec'] /= float(users[user]['num_votes_rec'])
       if users[user]['num_votes_giv'] != 0:
@@ -495,7 +494,7 @@ def account_trust_relation(trustor, trustee):
     Args:
       reviews: a dictionary with modeled reviews.
       train: a list of votes used as train.
-      trusts: a networkx DiGraph object. 
+      trusts: a networkx DiGraph object.
 
     Returns:
       A dictionary of users indexed by user ids.
@@ -503,7 +502,7 @@ def account_trust_relation(trustor, trustee):
 def model_users(reviews, train, trusts):
   users = {} #parser.get_userstat()
   products = model_products(reviews, train)
-  
+
   grouped_train = group_votes_by_review(train)
   for review_id in grouped_train:
     review = reviews[review_id]
@@ -563,7 +562,7 @@ def model_reviews_parallel(sample_raw_reviews=None):
   raw_reviews = sample_raw_reviews if sample_raw_reviews else [r for r in
       parser.parse_reviews()]
 
-  pool = multiprocessing.Pool(processes=_NUM_THREADS)
+  pool = Pool(processes=_NUM_THREADS)
   result = pool.imap_unordered(model_review, iter(raw_reviews), _CHUNK)
   pool.close()
   print 'Waiting for processes'
@@ -628,7 +627,7 @@ def model():
       reviews: a dictionary of reviews.
       users: a dictionary of users with aggregated information from train
     set.
-      trusts: a networkx DiGraph object. 
+      trusts: a networkx DiGraph object.
 
     Returns:
       None. The output is inserted in _TRAIN_FILE and _TEST_FILE.

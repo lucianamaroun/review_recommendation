@@ -6,8 +6,8 @@
     This module is used by other modules and should not be directly called.
 """
 
-import random
-import math
+from random import sample
+from math import ceil
 
 from src import parser
 
@@ -24,7 +24,6 @@ from src import parser
 def sample(sample_ratio):
   reviews = [r for r in parser.parse_reviews()]
 
-  sample_reviews = random.sample(reviews, int(math.ceil(len(reviews) *
-      sample_ratio)))
+  sample_reviews = sample(reviews, int(ceil(len(reviews) * sample_ratio)))
 
   return sample_reviews

@@ -6,12 +6,7 @@
     This module is used by other modules and should not be directly called.
 """
 
-import nltk
-from nltk.tokenize import wordpunct_tokenize, RegexpTokenizer, sent_tokenize
-#from nltk_contrib.readability.textanalyzer import syllables_en
-from nltk.corpus import stopwords
-from textblob import TextBlob
-#import networkx as nx
+from networkx import DiGraph
 
 
 _FILENEW = 'data/rating.txt'
@@ -160,7 +155,7 @@ def parses_userstat():
 """
 def parse_trusts():
   f = open('data/trustnetwork.txt', 'r')
-  trust = nx.DiGraph()
+  trust = DiGraph()
   for l in f:
     l = l.strip().split('::::')
     trust.add_edge(l[0], l[1])

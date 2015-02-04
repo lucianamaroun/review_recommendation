@@ -11,11 +11,11 @@
   Forest Classifier; or lg for Linear Regression.
 """
 
-import numpy as np
-import csv
-import math
+from csv import reader
+from math import sqrt
 from sys import argv
 
+import numpy as np
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVC, SVR
@@ -33,7 +33,7 @@ _PREDICTORS = {'svm': SVC, 'rfc': RandomForestClassifier,
 _SEL_FEAT = set(['r_avg_help_rec', 'u_avg_rel_help_giv', 'u_avg_help_giv',
     'num_tokens', 'unique_ratio', 'num_sents', 'u_num_trustees',
     'u_num_trustors', 'u_avg_rel_rating', 'u_avg_rating', 'r_num_trustees',
-    'noun_ratio', 'avg_sent', 'adj_ratio', 'num_ratio', 'adv_ratio', 
+    'noun_ratio', 'avg_sent', 'adj_ratio', 'num_ratio', 'adv_ratio',
     'verb_ratio', 'cap_ratio', 'r_num_trustors', 'pos_sent', 'r_avg_rel_rating',
     'r_num_reviews', 'neg_sent', 'r_avg_rating', 'trust', 'fw_ratio',
     'comp_ratio', 'sym_ratio', 'punct_ratio'
@@ -57,7 +57,7 @@ def read(data_file, selected_features=None):
   ids = []
   truth = []
   with open(data_file, 'r') as data:
-    reader = csv.reader(data)
+    reader = reader(data)
     features = reader.next()[_IDS_STOP:_FEAT_STOP] # header
     if selected_features:
       selected_indices = set([i+3 for i in range(len(features)) if features[i] in
@@ -157,7 +157,7 @@ def calculate_squared_errors(result, truth):
 """
 def calculate_rmse(result, truth):
   errors = calculate_squared_errors(result, truth)
-  rmse = math.sqrt(float(sum(errors)) / len(errors))
+  rmse = sqrt(float(sum(errors)) / len(errors))
   return rmse
 
 
@@ -318,7 +318,7 @@ def main(pred_code):
 
   if pred_code == 'lrb' or pred_code == 'rfr':
     avg, rtr_bias, rev_bias, train_truth = remove_bias(train_ids, train_truth)
-  
+
   pred_np = train(train_np, train_truth, pred_code)
   pred_p = train(train_p, train_truth, pred_code)
 
@@ -328,7 +328,7 @@ def main(pred_code):
   if pred_code == 'lrb' or pred_code == 'rfr':
     res_np = adjust_bias(avg, rtr_bias, rev_bias, test_ids, res_np)
     res_p = adjust_bias(avg, rtr_bias, rev_bias, test_ids, res_p)
-  
+
   compare(res_np, res_p, test_truth)
 
 
