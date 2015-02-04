@@ -8,13 +8,13 @@
 
 import nltk
 from nltk.tokenize import wordpunct_tokenize, RegexpTokenizer, sent_tokenize
-from nltk_contrib.readability.textanalyzer import syllables_en
+#from nltk_contrib.readability.textanalyzer import syllables_en
 from nltk.corpus import stopwords
 from textblob import TextBlob
-import networkx as nx
+#import networkx as nx
 
 
-_FILENEW = 'data/rating_new.txt'
+_FILENEW = 'data/rating.txt'
 PUNCTUATION = [';', ':', ',', '.', '!', '?']
     # source: http://www.nltk.org/api/nltk.tokenize.html
 
@@ -30,28 +30,72 @@ PUNCTUATION = [';', ':', ',', '.', '!', '?']
     "date", "text", "votes" (dictionary
     indexed by rater ids with helfulness votes as values).
 """
-def parse_reviews(review_ids=None):
+def parse_reviews(verbose=False):
   f = open(_FILENEW, 'r')
 
   review_count = 0
 
+  count_lines = 0
+  count_ignored = 0
+  type_ignored = {'user': 0, 'product': 0, 'category': 0, 'rating': 0,
+      'date': 0, 'text': 0, 'votes': 0}
   for l in f:
-    l = l.strip().split('::::')
-    review = {}
-    review['id'] = review_count
-    review_count += 1
-    if review_ids and review['id'] not in review_ids:
-      break
-    review['user'] = l[0]
-    review['product'] = l[1]
-    review['category'] = l[2]
-    review['rating'] = int(l[3]) / 10
-    review['date'] = l[5]
-    review['text'] = l[6]
+    count_lines += 1
 
-    review['votes'] = parse_votes(l[7])
+    try:
+      l = l.strip().split('::::')
+      review = {}
+      review['id'] = review_count
+      review_count += 1
+
+      if l[0].strip():
+        review['user'] = l[0].strip()
+      else:
+        raise Exception('user')
+      if l[1].strip():
+        review['product'] = l[1].strip()
+      else:
+        raise Exception('product')
+      if l[2].strip():
+        review['category'] = l[2].strip()
+      else:
+        raise Exception('category')
+      try:
+        review['rating'] = int(l[3]) / 10
+      except Exception:
+        raise Exception('rating')
+      if l[5].strip():
+        review['date'] = l[5].strip()
+      else:
+        raise Exception('date')
+      if l[6].strip():
+        review['text'] = l[6].strip()
+      else:
+        raise Exception('text')
+      try:
+        review['votes'] = parse_votes(l[7])
+      except Exception:
+        raise Exception('votes')
+    except Exception as e:
+      if verbose:
+        print 'Exception on parsing review, line %d, type %s' % (count_lines,
+            e.args[0])
+        print l
+        print '--------------------------'
+        count_ignored += 1
+        if e.args[0] in type_ignored:
+          type_ignored[e.args[0]] += 1
+      continue
 
     yield review
+
+  if verbose:
+    print '#############################'
+    print 'Summary of Parsing Errors:'
+    print '~ Ignored: %d' % count_ignored
+    for item in type_ignored.items():
+      print '~ Ignored of type %s: %d' % item
+    print '#############################'
 
   f.close()
 
