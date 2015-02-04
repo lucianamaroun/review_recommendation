@@ -21,9 +21,9 @@ from src import parser
     Returns:
       A list of sampled raw reviews.
 """
-def sample(sample_ratio):
+def sample_reviews(sample_ratio):
   reviews = [r for r in parser.parse_reviews()]
 
-  sample_reviews = sample(reviews, int(ceil(len(reviews) * sample_ratio)))
+  sel_reviews = sample(reviews, int(ceil(len(reviews) * sample_ratio)))
 
-  return sample_reviews
+  return sel_reviews

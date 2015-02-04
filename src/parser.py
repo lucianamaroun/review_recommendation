@@ -9,7 +9,7 @@
 from networkx import DiGraph
 
 
-_FILENEW = 'data/rating.txt'
+_FILE = 'data/rating.txt'
 PUNCTUATION = [';', ':', ',', '.', '!', '?']
     # source: http://www.nltk.org/api/nltk.tokenize.html
 
@@ -26,7 +26,7 @@ PUNCTUATION = [';', ':', ',', '.', '!', '?']
     indexed by rater ids with helfulness votes as values).
 """
 def parse_reviews(verbose=False):
-  f = open(_FILENEW, 'r')
+  f = open(_FILE, 'r')
 
   review_count = 0
 
