@@ -12,12 +12,14 @@ from math import ceil, log
 from datetime import datetime
 from copy import deepcopy
 from multiprocessing import Pool
+from re import match
 
 from numpy import std
 from networkx import pagerank
 from textblob import TextBlob
-from nltk.tokenize import wordpunct_tokenize, sent_tokenize
+from nltk.tokenize import wordpunct_tokenize, sent_tokenize, RegexpTokenizer
 from nltk import pos_tag
+from nltk.corpus import wordnet
 
 from src import sampler
 from src import parser
@@ -25,11 +27,10 @@ from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 
 _NUM_THREADS = 8
-_TRAIN_FILE = '/var/tmp/luciana/train.csv'
-_TEST_FILE = '/var/tmp/luciana/test.csv'
+_SAMPLE_RATIO = 0.1
+_TRAIN_FILE = '/var/tmp/luciana/train%d.csv' % int(_SAMPLE_RATIO * 100)
+_TEST_FILE = '/var/tmp/luciana/test%d.csv' % int(_SAMPLE_RATIO * 100)
 _SAMPLE = True
-_SAMPLE_RATIO = 0.01
-_CHUNK = 100
 
 
 """ Models votes with basic identification data (review id, reviewer id, rater
@@ -76,13 +77,13 @@ def split_votes(votes):
   return votes[:cut_point], votes[cut_point:]
 
 
-""" Models reviews in parallel, with _NUM_THREADS threads.
+""" Models a review.
 
     Args:
-      sample_reviews: (optional) A list of a sample of raw reviews to be used.
+      raw_review: A dictionary representing a review.
 
     Returns:
-      A dictionary of reviews with modeled features.
+      A dictionary with more keys represented new modeled attributes.
 """
 def model_review(raw_review):
   review = deepcopy(raw_review)
@@ -104,49 +105,54 @@ def model_review(raw_review):
     list of feature names.
 """
 def get_textual_features(text):
+    text = text.replace(r'  \d\d\d\d;','#').replace(r'&#\d\d\d\d;','#') \
+        .replace('quot;', '#').replace('lt;', '#').replace('gt;', '#')
+        # it is considered that unicode are more commonly symbols.
+    lower_text = text.lower()
+
     features = {}
     length_feat = get_text_length_stats(text)
     for feat in length_feat:
         features[feat] = length_feat[feat]
 
-    pos_feat = get_pos_stats(text)
+    pos_feat = get_pos_stats(lower_text)
     for feat in pos_feat:
         features[feat] = pos_feat[feat]
 
-    sent_feat = get_sent_stats(text)
+    sent_feat = get_sent_stats(lower_text)
     for feat in sent_feat:
       features[feat] = sent_feat[feat]
 
     return features
 
 
-""" Gets length statistics of the text: number of tokens, number of sentences,
-    ratio of unique words, average number of tokens by sentence and
-    ratio of capitalized sentences.
+""" Gets length statistics of the text: number of chars, number of tokens,
+    number of words, number of sentences, ratio of unique words, average number
+    of tokens by sentence and ratio of capitalized sentences.
 
     Args:
         text: the text to calculate statistics from.
 
     Returns:
-        A dictionary indexed by keys "num_tokens", "num_sents", "num_unique",
-    "avg_sent" and "cap_sent", and containing as values the corresponding
-    statistic value.
+        A dictionary indexed by keys "num_chars", "num_tokens", "num_words",
+    "num_sents", "uni_ratio", "avg_sent" and "cap_sent", and containing as
+    values the corresponding statistic value.
 """
 def get_text_length_stats(text):
     features = {}
 
-    capsent_tokenizer = RegexpTokenizer(r'[A-Z][^?.!;]*')
     word_tokenizer = RegexpTokenizer(r'\w+')
 
     tokens = wordpunct_tokenize(text)
     words = word_tokenizer.tokenize(text)
     sents = sent_tokenize(text)
-    capsents = capsent_tokenizer.tokenize(text)
+    capsents = [s for s in sents if match('[A-Z]', s[0])] 
 
     features['num_chars'] = len(text)
     features['num_tokens'] = len(tokens)
+    features['num_words'] = len(words)
     features['num_sents'] = len(sents)
-    features['num_unique'] = float(len(set(words))) / len(words)
+    features['uni_ratio'] = float(len(set(words))) / len(words)
     features['avg_sent'] = float(features['num_tokens']) / features['num_sents']
     features['cap_sent'] = float(len(capsents)) / len(sents)
 
@@ -170,13 +176,13 @@ def get_pos_stats(text):
         'verb_ratio': 0.0, 'comp_ratio': 0.0, 'fw_ratio': 0.0,
         'sym_ratio': 0.0, 'num_ratio': 0.0, 'punct_ratio': 0.0}
 
-    word_tokenizer = RegexpTokenizer(r'\w+')
-    words = word_tokenizer.tokenize(text)
-
-    tags = pos_tag(words)
+    tokens = wordpunct_tokenize(text)
+    tags = pos_tag(tokens)
 
     for _, tag in tags:
-      if tag.startswith('NN'):
+      if tag == 'FW' or (match('[a-z]+', tag) and wordnet.synsets(tag) == []):
+        features['fw_ratio'] += 1.0 # order is important
+      elif tag.startswith('NN'):
         features['noun_ratio'] += 1.0
       elif tag.startswith('JJ'):
         features['adj_ratio'] += 1.0
@@ -186,18 +192,16 @@ def get_pos_stats(text):
         features['verb_ratio'] += 1.0
       elif tag == 'JJR' or tag == 'RBR':
         features['comp_ratio'] += 1.0
-      elif tag == 'FW':
-        features['fw_ratio'] += 1.0
-      elif tag == 'SYM':
-        features['sym_ratio'] += 1.0
       elif tag == 'CD':
         features['num_ratio'] += 1.0
-      elif tag == 'SYM' and tag in PUNCTUATION:
+      elif tag == 'SYM' or tag == ':' or tag == '.':
+        features['sym_ratio'] += 1.0
+      elif tag == 'SYM' or tag == ':' or tag == '.' and tag in PUNCTUATION:
         features['punct_ratio'] += 1.0
 
     for tag in ['noun_ratio', 'adj_ratio', 'adv_ratio', 'verb_ratio', 'comp_ratio',
             'fw_ratio', 'sym_ratio', 'num_ratio', 'punct_ratio']:
-        features[tag] /= len(words)
+        features[tag] /= len(tokens)
 
     return features
 
@@ -250,9 +254,9 @@ def get_sent_stats(text):
         features['pos_ratio'] += 1
       elif scores['neg_score'] > scores['pos_score']:
         features['neg_ratio'] += 1
-  features['pos_ratio'] /= len(tblob.words)
-  features['neg_ratio'] /= len(tblob.words)
-
+  features['pos_ratio'] /= float(len(tblob.words))
+  features['neg_ratio'] /= float(len(tblob.words))
+  
   return features
 
 
@@ -414,15 +418,13 @@ def get_empty_user():
     Args:
       user: the user dictionary whose fields must be updated.
       rating: the rating value.
-      product_rating: the average rating of the correspoding product.
 
     Returns:
       None. Changes are made in place.
 """
-def add_user_rating(user, rating, product_rating):
+def add_user_rating(user, rating):
   user['num_reviews'] += 1
   user['avg_rating'] += float(rating)
-  user['avg_rel_rating'] += float(rating) - product_rating
   user['sd_rating'].append(float(rating))
 
 
@@ -457,20 +459,24 @@ def add_user_vote(reviewer, rater, vote, avg_help):
       None. Changes are made in place.
 """
 def finalize_user_features(users, trusts):
-  pagerank = pagerank(trusts)
+  prank = pagerank(trusts)
+  remove_users = set()
   for user in users:
-    if users[user]['num_reviews'] != 0:
-      users[user]['avg_rating'] /= float(users[user]['num_reviews'])
-      users[user]['avg_rel_rating'] /= float(users[user]['num_reviews'])
-      users[user]['sd_rating'] = std(users[user]['sd_rating'], ddof=1)
-      users[user]['sd_help_rec'] = std(users[user]['sd_help_rec'], ddof=1)
-      users[user]['sd_help_giv'] = std(users[user]['sd_help_giv'], ddof=1)
-      if users[user]['num_votes_rec'] != 0:
-        users[user]['avg_help_rec'] /= float(users[user]['num_votes_rec'])
-      if users[user]['num_votes_giv'] != 0:
-        users[user]['avg_help_giv'] /= float(users[user]['num_votes_giv'])
-        users[user]['avg_rel_help_giv'] /= float(users[user]['num_votes_giv'])
-    users[user]['pagerank'] = pagerank[user] if user in pagerank else 0.0
+    if users[user]['num_reviews'] == 0 or users[user]['num_votes_rec'] == 0 \
+        or users[user]['num_votes_giv'] == 0:
+      remove_users.add(user)
+      continue
+    users[user]['avg_rating'] /= float(users[user]['num_reviews'])
+    users[user]['avg_rel_rating'] /= float(users[user]['num_reviews'])
+    users[user]['sd_rating'] = std(users[user]['sd_rating'], ddof=1)
+    users[user]['avg_help_rec'] /= float(users[user]['num_votes_rec'])
+    users[user]['sd_help_rec'] = std(users[user]['sd_help_rec'], ddof=1)
+    users[user]['avg_help_giv'] /= float(users[user]['num_votes_giv'])
+    users[user]['avg_rel_help_giv'] /= float(users[user]['num_votes_giv'])
+    users[user]['sd_help_giv'] = std(users[user]['sd_help_giv'], ddof=1)
+    users[user]['pagerank'] = prank[user] if user in prank else 0.0
+  for user in remove_users:
+    users.pop(user, None)
 
 
 """ Includes trust relation under trustor and trustee statistics.
@@ -500,8 +506,7 @@ def account_trust_relation(trustor, trustee):
       A dictionary of users indexed by user ids.
 """
 def model_users(reviews, train, trusts):
-  users = {} #parser.get_userstat()
-  products = model_products(reviews, train)
+  users = {}
 
   grouped_train = group_votes_by_review(train)
   for review_id in grouped_train:
@@ -509,8 +514,7 @@ def model_users(reviews, train, trusts):
     if review['user'] not in users:
       rev_dict = create_user(review['user'])
       users[review['user']] = rev_dict
-    product_rating = products[review['product']]['avg_rating']
-    add_user_rating(users[review['user']], review['rating'], product_rating)
+    add_user_rating(users[review['user']], review['rating'])
     avg_help = float(sum([v['vote'] for v in grouped_train[review_id]])) / \
         len(grouped_train[review_id])
     for vote in grouped_train[review_id]:
@@ -527,29 +531,6 @@ def model_users(reviews, train, trusts):
   return users
 
 
-""" Models a product using reviews in train set.
-
-    Args:
-      reviews: a dictionary of reviews.
-      train: a list of votes belonging to test set.
-
-    Returns:
-      A dictionary of products indexed by product name and having as values
-    dictionary with field 'avg_rating'.
-"""
-def model_products(reviews, train):
-  selected_reviews = {}
-  for vote in train:
-    selected_reviews[vote['review']] = reviews[vote['review']]
-  grouped_reviews = group_reviews_by_product(selected_reviews)
-  products = {}
-  for product in grouped_reviews:
-    products[product] = {}
-    products[product]['avg_rating'] = float(sum([r['rating'] for r in
-        grouped_reviews[product]])) / len(grouped_reviews[product])
-  return products
-
-
 """ Models reviews in parallel using _NUM_THREADS threads.
 
     Args:
@@ -563,7 +544,8 @@ def model_reviews_parallel(sample_raw_reviews=None):
       parser.parse_reviews()]
 
   pool = Pool(processes=_NUM_THREADS)
-  result = pool.imap_unordered(model_review, iter(raw_reviews), _CHUNK)
+  result = pool.imap_unordered(model_review, iter(raw_reviews), len(raw_reviews)
+      / _NUM_THREADS + 1)
   pool.close()
   print 'Waiting for processes'
   pool.join()
@@ -582,7 +564,7 @@ def model_reviews_parallel(sample_raw_reviews=None):
   return reviews
 
 
-""" Models reviews, users, votes and products in order to generate features from
+""" Models reviews, users and votes in order to generate features from
     train and test sets. Aggregated statistics from test set includes reviews
     from both train and test set.
 
@@ -598,8 +580,8 @@ def model():
 
   print 'Modeling reviews'
   if _SAMPLE:
-    sample_reviews = sampler.sample(_SAMPLE_RATIO)
-    reviews = model_reviews_parallel(sample_reviews)
+    sel_reviews = sampler.sample_reviews(_SAMPLE_RATIO)
+    reviews = model_reviews_parallel(sel_reviews)
   else:
     reviews = model_reviews_parallel()
 
@@ -609,14 +591,11 @@ def model():
   print 'Split train and test'
   train, test = split_votes(votes)
 
-  print 'Modeling products'
-  products = model_products(reviews, train)
-
   print 'Modeling users'
   users = model_users(reviews, train, trusts)
 
   print 'Outputting'
-  output_model(train, test, reviews, users, products, trusts)
+  output_model(train, test, reviews, users, trusts)
 
 
 """ Outputs feature model.
@@ -632,59 +611,50 @@ def model():
     Returns:
       None. The output is inserted in _TRAIN_FILE and _TEST_FILE.
 """
-def output_model(train, test, reviews, users, products, trusts):
+def output_model(train, test, reviews, users, trusts):
   train_f = open(_TRAIN_FILE, 'w')
   test_f = open(_TEST_FILE, 'w')
 
   for out in [train_f, test_f]:
-    print >> out, 'review_id,reviewer_id,rater_id,rating,rel_rating,' +\
-        'num_tokens,num_sents,unique_ratio,avg_sent,cap_ratio' +\
-        ',noun_ratio,adj_ratio,adv_ratio,verb_ratio,comp_ratio,fw_ratio,' +\
-        'sym_ratio,num_ratio,punct_ratio,' +\
-        'pos_sent,neg_sent,pos_ratio,neg_ratio,kl_div,' +\
-        'r_num_reviews,r_avg_rating,r_avg_rel_rating,r_avg_help_rec,' +\
-        'r_num_trustors,r_num_trustees,r_avg_help_giv,r_avg_rel_help_giv,' +\
-        'r_sd_rating,r_sd_help_rec,r_sd_help_giv,r_pagerank,' +\
-        'u_num_reviews,u_avg_rating,u_avg_rel_rating,u_avg_help_rec,' +\
-        'u_num_trustors,u_num_trustees,u_avg_help_giv,u_avg_rel_help_giv,' +\
-        'u_sd_rating,u_sd_help_rec,u_sd_help_giv,u_pagerank,trust,truth'
+    print >> out, ('review_id,reviewer_id,rater_id,rating,'
+        'num_chars,num_tokens,num_words,num_sents,unique_ratio,avg_sent,'
+        'cap_ratio,noun_ratio,adj_ratio,adv_ratio,verb_ratio,comp_ratio,'
+        'fw_ratio,sym_ratio,num_ratio,punct_ratio,'
+        'pos_sent,neg_sent,pos_ratio,neg_ratio,kl_div,'
+        'r_num_reviews,r_avg_rating,r_avg_help_rec,'
+        'r_num_trustors,r_num_trustees,r_avg_help_giv,r_avg_rel_help_giv,'
+        'r_sd_rating,r_sd_help_rec,r_sd_help_giv,r_pagerank,'
+        'u_num_reviews,u_avg_rating,u_avg_help_rec,'
+        'u_num_trustors,u_num_trustees,u_avg_help_giv,u_avg_rel_help_giv,'
+        'u_sd_rating,u_sd_help_rec,u_sd_help_giv,u_pagerank,trust,truth')
 
   for partition, out in [(train, train_f), (test, test_f)]:
     for vote in partition:
       r = reviews[vote['review']]
-      rvr = users[r['user']] if r['user'] in users else get_empty_user()
-      rtr = users[vote['rater']] if vote['rater'] in users else get_empty_user()
+      if r['user'] not in users or vote['rater'] not in users:
+        continue
+      rvr = users[r['user']]
+      rtr = users[vote['rater']]
       trust = 1 if vote['rater'] in trusts and r['user'] in \
           trusts[vote['rater']] else 0
-      print rating
-      print r['num_tokens']
-      print r['num_sents']
-      print rvr['num_reviews']
-      print rvr['num_trustors']
-      print rvr['num_trustees']
-      print rtr['num_reviews']
-      print rtr['num_trustors']
-      print rtr['num_trustees']
-      print trust
-      print vote['vote']
-      print >> out, '%s,%s,%s,%d,%f' +\
-          '%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,' +\
-          '%d,%f,%f,%f,%d,%d,%f,%f,%f,%f,%f,%f,' +\
-          '%d,%f,%f,%f,%d,%d,%f,%f,%f,%f,%f,%f,' +\
-          '%d,%d' % (
-          r['id'], r['user'], vote['rater'],
-          r['rating'], r['rating'] - products[r['product']]['avg_rating'],
-          r['num_tokens'],r['num_sents'],r['num_unique'],r['avg_sent'],
+      print >> out, ('%s,%s,%s,%d,'
+          '%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,' 
+          '%d,%f,%f,%d,%d,%f,%f,%f,%f,%f,%f,'
+          '%d,%f,%f,%d,%d,%f,%f,%f,%f,%f,%f,'
+          '%d,%d') % (
+          r['id'], r['user'], vote['rater'], r['rating'],
+          r['num_chars'],r['num_tokens'],r['num_words'],r['num_sents'],
+          r['uni_ratio'],r['avg_sent'],
           r['cap_sent'],
           r['noun_ratio'],r['adj_ratio'],r['adv_ratio'],r['verb_ratio'],
           r['comp_ratio'],r['fw_ratio'],r['sym_ratio'],r['num_ratio'],
           r['punct_ratio'],
           r['pos_sent'],r['neg_sent'],r['pos_ratio'],r['neg_ratio'],r['kl'],
-          rvr['num_reviews'],rvr['avg_rating'],rvr['avg_rel_rating'],
+          rvr['num_reviews'],rvr['avg_rating'],
           rvr['avg_help_rec'],rvr['num_trustors'],rvr['num_trustees'],
           rvr['avg_help_giv'],rvr['avg_rel_help_giv'],rvr['sd_rating'],
           rvr['sd_help_rec'],rvr['sd_help_giv'],rvr['pagerank'],
-          rtr['num_reviews'],rtr['avg_rating'],rtr['avg_rel_rating'],
+          rtr['num_reviews'],rtr['avg_rating'],
           rtr['avg_help_rec'],rtr['num_trustors'],rtr['num_trustees'],
           rtr['avg_help_giv'],rtr['avg_rel_help_giv'],rtr['sd_rating'],
           rtr['sd_help_rec'],rtr['sd_help_giv'],rtr['pagerank'],
