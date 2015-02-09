@@ -19,25 +19,34 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVC, SVR
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.naive_bayes import GaussianNB
 from sklearn.feature_selection import RFE
 
 
-_TRAIN_FILE = '/var/tmp/luciana/train-notustat.txt'
-_TEST_FILE = '/var/tmp/luciana/test-notustat.txt'
+_TRAIN_FILE = '/var/tmp/luciana/train1.csv'
+_TEST_FILE = '/var/tmp/luciana/test1.csv'
 _IDS_STOP = 3 # index + 1 where id features end
-_NP_STOP = 25 # index + 1 where non-personalized features end
-_FEAT_STOP = 32 # index + 1 where all the features end
+_NP_STOP = 36 # index + 1 where non-personalized features end
+_FEAT_STOP = 48 # index + 1 where all the features end
 _PREDICTORS = {'svm': SVC, 'rfc': RandomForestClassifier,
-    'lr': LinearRegression, 'lrb': LinearRegression, 'svr': SVR,
-    'rfr': RandomForestRegressor}
-_SEL_FEAT = set(['r_avg_help_rec', 'u_avg_rel_help_giv', 'u_avg_help_giv',
-    'num_tokens', 'unique_ratio', 'num_sents', 'u_num_trustees',
-    'u_num_trustors', 'u_avg_rel_rating', 'u_avg_rating', 'r_num_trustees',
-    'noun_ratio', 'avg_sent', 'adj_ratio', 'num_ratio', 'adv_ratio',
-    'verb_ratio', 'cap_ratio', 'r_num_trustors', 'pos_sent', 'r_avg_rel_rating',
-    'r_num_reviews', 'neg_sent', 'r_avg_rating', 'trust', 'fw_ratio',
-    'comp_ratio', 'sym_ratio', 'punct_ratio'
-    ])
+    'lr': LinearRegression, 'lrb': LinearRegression, 'svr': SVR, 'svrb': SVR,
+    'rfr': RandomForestRegressor, 'rfrb': RandomForestRegressor,
+    'dtc': DecisionTreeClassifier, 'dtr': DecisionTreeRegressor,
+    'dtrb': DecisionTreeRegressor, 'gnb': GaussianNB}
+_SEL_FEAT = None
+   # set(['r_avg_help_rec', 'num_words', 'u_avg_rel_help_giv',
+   # 'u_avg_help_giv', 'num_tokens', 'u_sd_help_giv', 'r_sd_help_rec',
+   # 'num_chars', 'u_avg_help_rec', 'u_pagerank', 'u_num_trustors', 
+   # 'u_sd_help_rec', 'u_num_trustees', 'num_sents', 'r_num_trustees',
+   # 'unique_ratio', 'u_avg_rating', 'kl_div', 'avg_sent', 'adj_ratio',
+   # 'noun_ratio', 'r_num_trustors', 'num_ratio', 'neg_sent', 'adv_ratio',
+   # 'u_num_reviews', 'cap_ratio', 'verb_ratio', 'pos_sent', 'sym_ratio',
+   # 'u_sd_rating', 'r_avg_rel_help_giv', 'r_avg_help_giv', 'trust',
+   # 'r_sd_help_giv', 'r_pagerank', 'r_avg_rating', 'r_num_reviews', 'rating',
+   # 'r_sd_rating', #'comp_ratio', 'fw_ratio', 'punct_ratio', 'pos_ratio',
+   # 'neg_ratio'
+   # ])
 
 """ Reads features and truth values from votes in a data file.
 
@@ -57,12 +66,12 @@ def read(data_file, selected_features=None):
   ids = []
   truth = []
   with open(data_file, 'r') as data:
-    reader = reader(data)
-    features = reader.next()[_IDS_STOP:_FEAT_STOP] # header
+    csv_reader = reader(data)
+    features = csv_reader.next()[_IDS_STOP:_FEAT_STOP] # header
     if selected_features:
       selected_indices = set([i+3 for i in range(len(features)) if features[i] in
           selected_features])
-    for row in reader:
+    for row in csv_reader:
       ids.append(row[:_IDS_STOP])
       data_np.append(np.array([float(f) for f in row[_IDS_STOP:_NP_STOP]]))
       if selected_features:
@@ -222,11 +231,14 @@ def rank_features_rfe(features, data, truth):
 def remove_bias(ids, truth):
   raters = {}
   reviews = {}
+  authors = {}
   rtr_bias = {}
   rev_bias = {}
+  aut_bias = {}
   all_sum = 0
   for index, instance in enumerate(ids):
     rater = instance[2] # rater id
+    author = instance[1] # author id
     review = instance[0] # review id
     if rater not in raters:
       raters[rater] = {}
@@ -234,34 +246,46 @@ def remove_bias(ids, truth):
       raters[rater]['count'] = 0
     raters[rater]['sum'] += truth[index] # truth
     raters[rater]['count'] += 1
+    if author not in authors:
+      authors[author] = {}
+      authors[author]['sum'] = 0
+      authors[author]['count'] = 0
+    authors[author]['sum'] += truth[index] # truth
+    authors[author]['count'] += 1
     if review not in reviews:
       reviews[review] = {}
       reviews[review]['sum'] = 0
       reviews[review]['count'] = 0
     reviews[review]['sum'] += truth[index] # truth
     reviews[review]['count'] += 1
-    all_sum += truth[index]
-  all_avg = float(all_sum) / len(truth)
+  all_avg = float(sum(truth)) / len(truth)
   for rtr in raters:
     rtr_bias[rtr] = float(raters[rtr]['sum']) / raters[rtr]['count'] - all_avg
+  for aut in authors:
+    aut_bias[aut] = float(authors[aut]['sum']) / authors[aut]['count'] - all_avg
   for rev in reviews:
     rev_bias[rev] = float(reviews[rev]['sum']) / reviews[rev]['count'] - all_avg
-  new_truth = truth[:]
+  new_truth = [0] * len(truth)
   for index, instance in enumerate(ids):
-    rater = instance[2] # rater id
-    review = instance[0] # review id
-    new_truth[index] -= all_avg + rtr_bias[rater] + rev_bias[review]
-  return all_avg, rtr_bias, rev_bias, new_truth
+    rtr = instance[2] # rater id
+    aut = instance[1] # author id
+    rev = instance[0] # review id
+    new_truth[index] = truth[index] - all_avg - rev_bias[rev] - rtr_bias[rtr]
+       
+  return all_avg, rtr_bias, rev_bias, aut_bias, new_truth
 
 
-def adjust_bias(avg, rtr_bias, rev_bias, ids, res):
+def adjust_bias(avg, rtr_bias, rev_bias, aut_bias, ids, res):
   new_res = res[:]
   for index, instance in enumerate(ids):
     rater = instance[2]
+    author = instance[1]
     review = instance[0]
     new_res[index] += avg
     if rater in rtr_bias: # not cold-start rater
       new_res[index] += rtr_bias[rater]
+#    if author in aut_bias: # not cold-start author
+#      new_res[index] += aut_bias[author]
     if review in rev_bias: # not cold-start review
       new_res[index] += rev_bias[review]
   return new_res
@@ -288,6 +312,16 @@ def compare(res_np, res_p, test_truth):
   print '-----------------------------'
 
 
+""" Filters features according to a selected set.
+
+    Args:
+      features: a list of strings containing features names.
+      data: list of instances modeled as vectors.
+      selected: a set of strings with the selected features names.
+    
+    Returns:
+      A list of instance modeled as vectors projected on the selected features.
+"""
 def filter_features(features, data, selected):
   new_data = []
   sel_columns = set()
@@ -311,13 +345,17 @@ def filter_features(features, data, selected):
       None. The results are output to stdout.
 """
 def main(pred_code):
-  features, train_ids, train_np, train_p, train_truth = read(_TRAIN_FILE)
-  _, test_ids, test_np, test_p, test_truth = read(_TEST_FILE)
+  features, train_ids, train_np, train_p, train_truth = read(_TRAIN_FILE,
+      _SEL_FEAT)
+  _, test_ids, test_np, test_p, test_truth = read(_TEST_FILE, _SEL_FEAT)
 
-  #evaluate_features(features, train_p + test_p, train_truth + test_truth)
+  if pred_code == 'eval':
+    evaluate_features(features, train_p + test_p, train_truth + test_truth)
+    return
 
-  if pred_code == 'lrb' or pred_code == 'rfr':
-    avg, rtr_bias, rev_bias, train_truth = remove_bias(train_ids, train_truth)
+  if pred_code[-1] == 'b':
+    avg, rtr_bias, rev_bias, aut_bias, train_truth = remove_bias(train_ids,
+        train_truth)
 
   pred_np = train(train_np, train_truth, pred_code)
   pred_p = train(train_p, train_truth, pred_code)
@@ -325,9 +363,9 @@ def main(pred_code):
   res_np = test(test_np, pred_np)
   res_p = test(test_p, pred_p)
 
-  if pred_code == 'lrb' or pred_code == 'rfr':
-    res_np = adjust_bias(avg, rtr_bias, rev_bias, test_ids, res_np)
-    res_p = adjust_bias(avg, rtr_bias, rev_bias, test_ids, res_p)
+  if pred_code[-1] == 'b':
+    res_np = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_np)
+    res_p = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_p)
 
   compare(res_np, res_p, test_truth)
 
