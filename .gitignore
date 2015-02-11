@@ -2,5 +2,6 @@ data*
 old*
 out*
 \.DS_Store*
-*.pyc
+*\.pyc
 *~
+~\.sh

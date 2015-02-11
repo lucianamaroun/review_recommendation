@@ -1,3 +1,15 @@
+""" Foreign Script
+    --------------
+
+    Evaluates presence of foreign (or unidentified) words in reviews. The
+    result is output to stdout containing the reviews with 40% of foreign words
+    or more and a summary with the total of foreign reviews identified.
+
+    Usage:
+      $ python -m script.foreign
+    on the root directory of the project.
+"""
+
 from re import match
 
 from nltk.corpus import wordnet
@@ -18,7 +30,7 @@ for r in parser.parse_reviews():
   except Exception:
     # print text
     continue
-  if fw_ratio > 0.4:
+  if fw_ratio >= 0.4:
     print 'FW Review found: %d' % r['id']
     print text
     print '-----------------------------'

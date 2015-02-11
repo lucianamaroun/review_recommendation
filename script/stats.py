@@ -4,7 +4,7 @@
     Obtains basic statiscts of the dataset.
 
     Usage:
-      $ python -m src.stats
+      $ python -m script.stats
     on the root directory of the project.
 """
 

@@ -1,3 +1,15 @@
+""" LDA Script
+    ----------
+
+    Applies LDA to a subset of the reviews and prints the topics to stdout. For
+    a different number of reviews, topics or idf filter quantile, change
+    variables _N_REVIEWS, _N_TOPICS and _IDF_QUANTILE, respectively.
+
+    Usage:
+      $ python -m script.lda
+    on the root directory of the project.
+"""
+
 from nltk.corpus import stopwords
 from nltk.tokenize import RegexpTokenizer
 from nltk.stem import SnowballStemmer
@@ -6,8 +18,9 @@ from math import log, floor
 
 from src import parser
 
-
-_IDF_QUANTILE = 0.01
+_N_REVIEWS = 30454
+_N_TOPICS = 5
+_IDF_QUANTILE = 0.001
 
 
 """ Extracts words from text, ignoring pucntuation.
@@ -108,14 +121,14 @@ if __name__ == '__main__':
   for r in parser.parse_reviews():
     documents.append(r['text'])
     count += 1
-    if count >= 10000:
+    if count >= _N_REVIEWS:
       break
   documents = process_documents(documents)
   dictionary = corpora.Dictionary(documents)
   corpus = [dictionary.doc2bow(d) for d in documents]
   lda = models.ldamodel.LdaModel(corpus=corpus, id2word=dictionary,
-      num_topics=10)
-  topics = lda.print_topics(10)
+      num_topics=_N_TOPICS)
+  topics = lda.print_topics(_N_TOPICS)
   for index, topic in enumerate(topics):
     print 'Topic %d' % (index + 1)
     print topic
