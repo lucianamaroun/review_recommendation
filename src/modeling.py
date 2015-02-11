@@ -26,8 +26,8 @@ from src import parser
 from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 
-_NUM_THREADS = 8
-_SAMPLE_RATIO = 0.1
+_NUM_THREADS = 4
+_SAMPLE_RATIO = 0.0001
 _TRAIN_FILE = '/var/tmp/luciana/train%d.csv' % int(_SAMPLE_RATIO * 100)
 _TEST_FILE = '/var/tmp/luciana/test%d.csv' % int(_SAMPLE_RATIO * 100)
 _SAMPLE = True
@@ -55,6 +55,8 @@ def model_votes(reviews):
       vote['vote'] = review['votes'][rater]
       vote['date'] = review['date']
       votes.append(vote)
+
+  print '# votes %d' % len(votes)
 
   return votes
 
@@ -87,10 +89,32 @@ def split_votes(votes):
 """
 def model_review(raw_review):
   review = deepcopy(raw_review)
+  print review
+  if get_foreign_ratio(review['text']) >= 0.4:
+    return None
   text_feat = get_textual_features(review['text'])
   for feat in text_feat:
       review[feat] = text_feat[feat]
   return review
+
+
+""" Get ratio of foreign (or unidentified) words in a text.
+
+    Args:
+      text: a string containing the text.
+
+    Returns:
+      A real value with the ratio of foreign words.
+"""
+def get_foreign_ratio(text):
+  text = text.lower()
+  word_tokenizer = RegexpTokenizer(r'\w+')
+  words = word_tokenizer.tokenize(text)
+  fw = [w for w in words if match('[a-z]+', w) and wordnet.synsets(w) == []]
+  if len(words) > 0:  
+    return float(len(fw)) / len(words)
+  else:
+    return 0
 
 
 """ Reports different features derived from text, related to length, syntax,
@@ -107,7 +131,7 @@ def model_review(raw_review):
 def get_textual_features(text):
     text = text.replace(r'  \d\d\d\d;','#').replace(r'&#\d\d\d\d;','#') \
         .replace('quot;', '#').replace('lt;', '#').replace('gt;', '#')
-        # it is considered that unicode are more commonly symbols.
+        # it is considered that unicode are commonly symbols.
     lower_text = text.lower()
 
     features = {}
@@ -521,11 +545,12 @@ def model_users(reviews, train, trusts):
       if vote['rater'] not in users:
         rat_dict = create_user(vote['rater'])
         users[vote['rater']] = rat_dict
-      add_user_vote(users[review['user']], users[vote['rater']], vote['vote'], avg_help)
+      add_user_vote(users[review['user']], users[vote['rater']], vote['vote'],
+          avg_help)
   for trustor in trusts:
     for trustee in trusts[trustor]:
-      account_trust_relation(users[trustor] if trustor in users else None, users[trustee] if
-          trustee in users else None)
+      account_trust_relation(users[trustor] if trustor in users else None,
+          users[trustee] if trustee in users else None)
   finalize_user_features(users, trusts)
 
   return users
@@ -552,6 +577,7 @@ def model_reviews_parallel(sample_raw_reviews=None):
   print 'Processes have finished'
 
   print 'Creating dict'
+  result = [review for review in result if review]
   reviews = {review['id']:review for review in result}
 
   print 'Lenght of dictionary %d' % len(reviews)
@@ -591,8 +617,12 @@ def model():
   print 'Split train and test'
   train, test = split_votes(votes)
 
+  print 'train: %d, test: %d' % (len(train), len(test))
+
   print 'Modeling users'
   users = model_users(reviews, train, trusts)
+
+  print 'users: %d' % len(users)
 
   print 'Outputting'
   output_model(train, test, reviews, users, trusts)
@@ -632,6 +662,7 @@ def output_model(train, test, reviews, users, trusts):
     for vote in partition:
       r = reviews[vote['review']]
       if r['user'] not in users or vote['rater'] not in users:
+        print 'user out'
         continue
       rvr = users[r['user']]
       rtr = users[vote['rater']]
