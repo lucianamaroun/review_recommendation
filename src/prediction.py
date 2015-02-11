@@ -1,16 +1,12 @@
 """ Predictor Module
     ----------------
 
-    Realizes the task of predicting heplfulness votes and evaluating the
-  results.
+    Realizes the task of pred_code: a code for the predictor, used for indexing
+    the dictionary _PREDICTORS.
 
-    Usage:
-      $ python -m src.prediction <predictor_code>
-    on the project root directory.
-    <predictor_code> can be svm for Support Vector Machine; rfc for Random
-  Forest Classifier; or lg for Linear Regression.
+    Returns:
+      A scikit learn classifier object.
 """
-
 from csv import reader
 from math import sqrt
 from sys import argv
@@ -18,19 +14,20 @@ from sys import argv
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression
-from sklearn.svm import SVC, SVR
+from sklearn.svm import SVC, SVR, LinearSVC
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.naive_bayes import GaussianNB
 from sklearn.feature_selection import RFE
 
 
-_TRAIN_FILE = '/var/tmp/luciana/train1.csv'
-_TEST_FILE = '/var/tmp/luciana/test1.csv'
+_TRAIN_FILE = '/var/tmp/luciana/train10.csv'
+_TEST_FILE = '/var/tmp/luciana/test10.csv'
 _IDS_STOP = 3 # index + 1 where id features end
 _NP_STOP = 36 # index + 1 where non-personalized features end
 _FEAT_STOP = 48 # index + 1 where all the features end
 _PREDICTORS = {'svm': SVC, 'rfc': RandomForestClassifier,
     'lr': LinearRegression, 'lrb': LinearRegression, 'svr': SVR, 'svrb': SVR,
+    'lsvm': LinearSVC,
     'rfr': RandomForestRegressor, 'rfrb': RandomForestRegressor,
     'dtc': DecisionTreeClassifier, 'dtr': DecisionTreeRegressor,
     'dtrb': DecisionTreeRegressor, 'gnb': GaussianNB}
@@ -49,10 +46,8 @@ _SEL_FEAT = None
    # ])
 
 """ Reads features and truth values from votes in a data file.
-
     Args:
       data_file: the string with the csv file with the data.
-
     Returns:
       Four values: a list with features' names; a list of numpy arrays with
     instances represented by non-personalized features; a list of numpy arrays
@@ -84,19 +79,17 @@ def read(data_file, selected_features=None):
 
 
 """ Trains a predictor.
-
     Args:
       train: a list of numpy arrays with the votes instances used as train.
       truth: a list of integers containing the truth values of votes, integers
     between 0 and 5.
       pred_code: a code for the predictor, used for indexing the dictionary
     _PREDICTORS.
-
     Returns:
       A scikit learn classifier object.
 """
 def train(train, truth, pred_code):
-  pred = _PREDICTORS[pred_code]()#kernel='linear', C=1e3)
+  pred = _PREDICTORS[pred_code](cache_size=1000)
   pred.fit(train, truth)
   return pred
 
@@ -228,6 +221,20 @@ def rank_features_rfe(features, data, truth):
   return ranking
 
 
+""" Removes bias from helpfulness votes. The bias may correspond to review's,
+    author's or voter's helpfulness average.
+
+    Args:
+      ids: a list of arrays containing the ids of the votes instances (review,
+        author, voter).
+      truth: a list containing the helpfulness votes associated to the
+        instances.
+
+    Returns:
+      Global helpfulness average, dictionary of voter bias, dictionary of
+    review bias, dictionary of author bias and a list of truth values with bias
+    removed. 
+"""
 def remove_bias(ids, truth):
   raters = {}
   reviews = {}
@@ -275,6 +282,20 @@ def remove_bias(ids, truth):
   return all_avg, rtr_bias, rev_bias, aut_bias, new_truth
 
 
+""" Adjusts predicted truth values accounting for bias.
+
+    Args:
+      avg: global average of helpfulness.
+      rtr_bias: dictionary with voter bias indexed by voter id.
+      rev_bias: dictionary with review bias indexed by review id.
+      aut_bias: dictionary with author bias indexed by author id.
+      ids: list of arrays containing ids (review, author, voter) for the
+        instances.
+      res: list of predicted results to adjust with bias.
+
+    Returns:
+      A list of predicted values after bias ajust.
+"""
 def adjust_bias(avg, rtr_bias, rev_bias, aut_bias, ids, res):
   new_res = res[:]
   for index, instance in enumerate(ids):
@@ -304,12 +325,16 @@ def adjust_bias(avg, rtr_bias, rev_bias, aut_bias, ids, res):
 def compare(res_np, res_p, test_truth):
 
   print 'Non-Personalized Performance:'
-  print 'RMSE: %f' % calculate_rmse(res_np, test_truth)
+  rmse_np = calculate_rmse(res_np, test_truth)
+  print 'RMSE: %f' % rmse_np 
   print '-----------------------------'
 
   print 'Personalized Performance:'
-  print 'RMSE: %f' % calculate_rmse(res_p, test_truth)
+  rmse_p = calculate_rmse(res_p, test_truth)
+  print 'RMSE: %f' % rmse_p 
   print '-----------------------------'
+
+  return rmse_np, rmse_p
 
 
 """ Filters features according to a selected set.
@@ -331,9 +356,35 @@ def filter_features(features, data, selected):
   for instance in data:
     instance = instance.tolist()
     instance = [instance[i] for i in range(len(instance)) if i in sel_columns]
-    instance = np.array(instance)
+    instance = array(instance)
     new_data.append(instance)
   return new_data
+
+
+""" Evaluates linear fit of the data.
+
+    Args:
+      data_np: a list of instances containing only non-personalized features.
+      data_p: a list of instances containing both non-personalized and
+        personalized features.
+      truth: a list of truth values associated to instances.
+
+    Returns:
+      None. The result is output to stdout and contains R-squared evaluation
+    over non-personalized and personalized models.
+"""
+def evaluate_linear_fit(data_np, data_p, truth):
+  lr_np = LinearRegression()
+  lr_np.fit(data_np, truth)
+  print 'Linear Fit Evaluation'
+  print 'Non-personalized'
+  print 'R-squared: %f' % lr_np.score(data_np, truth)
+  lr_p = LinearRegression()
+  lr_p.fit(data_p, truth)
+  print 'Personalized'
+  print 'R-squared: %f' % lr_p.score(data_p, truth)
+  print '-----------------------------'
+
 
 """ Main function of prediction module. Performs feature evaluation and
     perfomance comparisson between non-personalized and personalized predictors.
@@ -344,31 +395,60 @@ def filter_features(features, data, selected):
     Returns:
       None. The results are output to stdout.
 """
-def main(pred_code):
-  features, train_ids, train_np, train_p, train_truth = read(_TRAIN_FILE,
-      _SEL_FEAT)
-  _, test_ids, test_np, test_p, test_truth = read(_TEST_FILE, _SEL_FEAT)
+def main(pred_code, rep=1):
+  scores_p = []
+  scores_np = []
+  for _ in range(rep):
+    features, train_ids, train_np, train_p, train_truth = read(_TRAIN_FILE,
+        _SEL_FEAT)
+    _, test_ids, test_np, test_p, test_truth = read(_TEST_FILE, _SEL_FEAT)
 
-  if pred_code == 'eval':
-    evaluate_features(features, train_p + test_p, train_truth + test_truth)
-    return
+    if pred_code == 'eval':
+      evaluate_features(features, train_p + test_p, train_truth + test_truth)
+      evaluate_linear_fit(train_np + test_np, train_p + test_p, train_truth +
+          test_truth)
+      return
 
-  if pred_code[-1] == 'b':
-    avg, rtr_bias, rev_bias, aut_bias, train_truth = remove_bias(train_ids,
-        train_truth)
+    if pred_code[-1] == 'b':
+      avg, rtr_bias, rev_bias, aut_bias, train_truth = remove_bias(train_ids,
+          train_truth)
 
-  pred_np = train(train_np, train_truth, pred_code)
-  pred_p = train(train_p, train_truth, pred_code)
+    pred_np = train(train_np, train_truth, pred_code)
+    pred_p = train(train_p, train_truth, pred_code)
 
-  res_np = test(test_np, pred_np)
-  res_p = test(test_p, pred_p)
+    res_np = test(test_np, pred_np)
+    res_p = test(test_p, pred_p)
 
-  if pred_code[-1] == 'b':
-    res_np = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_np)
-    res_p = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_p)
+    if pred_code[-1] == 'b':
+      res_np = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_np)
+      res_p = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_p)
 
-  compare(res_np, res_p, test_truth)
+    rmse_np, rmse_p = compare(res_np, res_p, test_truth)
+    scores_np.append(rmse_np)
+    scores_p.append(rmse_p)
+
+  Z = 1.959964
+  if rep > 1:
+    print '*******************'
+    print 'SUMMARY'
+    mean_np = sum(scores_np) / len(scores_np)
+    std_np = std(scores_np, ddof=1)
+    width_np = Z * std_np / sqrt(rep)
+    print 'Non-personalized:'
+    print 'Measures: %s' % scores_np
+    print 'Mean RMSE: %f' % mean_np 
+    print 'Empiric SD of RMSE: %f' % std_np 
+    print 'IC of 95%%: (%f, %f)' % (mean_np - width_np, mean_np + width_np)
+    mean_p = sum(scores_p) / len(scores_p)
+    std_p = std(scores_p, ddof=1)
+    width_p = Z * std_p / sqrt(rep)
+    print 'Personalized:'
+    print 'Measures: %s' % scores_p
+    print 'Mean RMSE: %f' % mean_p 
+    print 'Empiric SD of RMSE: %f' % std_p
+    print 'IC of 95%%: (%f, %f)' % (mean_p - width_p, mean_p + width_p)
+    print '*******************'
 
 
 if __name__ == '__main__':
-  main(argv[1] if len(argv) > 1 else 'rfc') # use Random Forest as default
+  main(argv[1] if len(argv) > 1 else 'rfc', int(argv[2]) if len(argv) > 2 else 1)
