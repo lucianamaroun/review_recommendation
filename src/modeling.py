@@ -20,16 +20,17 @@ from textblob import TextBlob
 from nltk.tokenize import wordpunct_tokenize, sent_tokenize, RegexpTokenizer
 from nltk import pos_tag
 from nltk.corpus import wordnet
+import traceback
 
 from src import sampler
 from src import parser
 from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 
-_NUM_THREADS = 4
-_SAMPLE_RATIO = 0.0001
-_TRAIN_FILE = '/var/tmp/luciana/train%d.csv' % int(_SAMPLE_RATIO * 100)
-_TEST_FILE = '/var/tmp/luciana/test%d.csv' % int(_SAMPLE_RATIO * 100)
+_NUM_THREADS = 8
+_SAMPLE_RATIO = 0.5
+_TRAIN_FILE = '/var/tmp/luciana/train%d-foreign.csv' % int(_SAMPLE_RATIO * 100)
+_TEST_FILE = '/var/tmp/luciana/test%d-foreign.csv' % int(_SAMPLE_RATIO * 100)
 _SAMPLE = True
 
 
@@ -88,14 +89,18 @@ def split_votes(votes):
       A dictionary with more keys represented new modeled attributes.
 """
 def model_review(raw_review):
-  review = deepcopy(raw_review)
-  print review
-  if get_foreign_ratio(review['text']) >= 0.4:
-    return None
-  text_feat = get_textual_features(review['text'])
-  for feat in text_feat:
-      review[feat] = text_feat[feat]
-  return review
+  try:
+    review = deepcopy(raw_review)
+    if get_foreign_ratio(review['text']) >= 0.4:
+      return None
+    text_feat = get_textual_features(review['text'])
+    for feat in text_feat:
+        review[feat] = text_feat[feat]
+    return review
+  except Exception as e:
+    traceback.print_exc()
+    print()
+    raise e
 
 
 """ Get ratio of foreign (or unidentified) words in a text.
@@ -176,9 +181,12 @@ def get_text_length_stats(text):
     features['num_tokens'] = len(tokens)
     features['num_words'] = len(words)
     features['num_sents'] = len(sents)
-    features['uni_ratio'] = float(len(set(words))) / len(words)
-    features['avg_sent'] = float(features['num_tokens']) / features['num_sents']
-    features['cap_sent'] = float(len(capsents)) / len(sents)
+    features['uni_ratio'] = float(len(set(words))) / len(words) if len(words) \
+        else 0.0
+    features['avg_sent'] = float(features['num_tokens']) / \
+        features['num_sents'] if features['num_sents'] else 0.0
+    features['cap_sent'] = float(len(capsents)) / len(sents) if len(sents) \
+        else 0.0
 
     return features
 
@@ -225,7 +233,7 @@ def get_pos_stats(text):
 
     for tag in ['noun_ratio', 'adj_ratio', 'adv_ratio', 'verb_ratio', 'comp_ratio',
             'fw_ratio', 'sym_ratio', 'num_ratio', 'punct_ratio']:
-        features[tag] /= len(tokens)
+        features[tag] = features[tag] / len(tokens) if len(tokens) else 0.0
 
     return features
 
@@ -255,8 +263,8 @@ def get_sent_stats(text):
     elif s.sentiment.polarity < 0:
       neg += 1.0
     total += 1.0
-  features['pos_sent'] = pos / total
-  features['neg_sent'] = neg / total
+  features['pos_sent'] = pos / total if total else 0.0
+  features['neg_sent'] = neg / total if total else 0.0
 
   swn = SimplifiedSentiWordNet()
   features['pos_ratio'] = 0
@@ -278,8 +286,10 @@ def get_sent_stats(text):
         features['pos_ratio'] += 1
       elif scores['neg_score'] > scores['pos_score']:
         features['neg_ratio'] += 1
-  features['pos_ratio'] /= float(len(tblob.words))
-  features['neg_ratio'] /= float(len(tblob.words))
+  features['pos_ratio'] = features['pos_ratio'] / float(len(tblob.words)) if \
+      len(tblob.words) else 0.0
+  features['neg_ratio'] = features['neg_ratio'] / float(len(tblob.words)) if \
+      len(tblob.words) else 0.0
   
   return features
 
@@ -328,10 +338,12 @@ def calculate_kl_divergence(reviews):
         avg_unigram[word] += review['unigram'][word]
       total_words += num_words
     for word in avg_unigram:
-      avg_unigram[word] /= total_words
+      avg_unigram[word] = avg_unigram[word] / total_words if total_words else 0
     for review in grouped_reviews[product]:
       review['kl'] = 0
       for word in review['unigram']:
+        if not avg_unigram[word]:
+          continue
         review['kl'] += review['unigram'][word] * log(review['unigram'][word] /
             avg_unigram[word])
       review.pop('unigram', None)
@@ -359,7 +371,8 @@ def get_unigram_model(text):
     unigram[word.decode()] += 1.0
 
   for word in unigram:
-    unigram[word] /= len(text_blob.words)
+    unigram[word] = unigram[word] / len(text_blob.words) if \
+        len(text_blob.words) else 0
 
   return unigram, len(text_blob.words)
 
@@ -533,9 +546,11 @@ def model_users(reviews, train, trusts):
   users = {}
 
   grouped_train = group_votes_by_review(train)
+  print '# reviews in grouped_train: %d' % len(grouped_train)
   for review_id in grouped_train:
     review = reviews[review_id]
     if review['user'] not in users:
+      print 'new_user'
       rev_dict = create_user(review['user'])
       users[review['user']] = rev_dict
     add_user_rating(users[review['user']], review['rating'])
@@ -543,15 +558,20 @@ def model_users(reviews, train, trusts):
         len(grouped_train[review_id])
     for vote in grouped_train[review_id]:
       if vote['rater'] not in users:
+        print 'new_user'
         rat_dict = create_user(vote['rater'])
         users[vote['rater']] = rat_dict
       add_user_vote(users[review['user']], users[vote['rater']], vote['vote'],
           avg_help)
+  print len(users)
+  print users.keys()
   for trustor in trusts:
     for trustee in trusts[trustor]:
       account_trust_relation(users[trustor] if trustor in users else None,
           users[trustee] if trustee in users else None)
   finalize_user_features(users, trusts)
+  print len(users)
+  print users.keys()
 
   return users
 
@@ -662,7 +682,6 @@ def output_model(train, test, reviews, users, trusts):
     for vote in partition:
       r = reviews[vote['review']]
       if r['user'] not in users or vote['rater'] not in users:
-        print 'user out'
         continue
       rvr = users[r['user']]
       rtr = users[vote['rater']]

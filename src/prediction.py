@@ -11,17 +11,17 @@ from csv import reader
 from math import sqrt
 from sys import argv
 
-import numpy as np
+from numpy import array
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVC, SVR, LinearSVC
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.naive_bayes import GaussianNB
 from sklearn.feature_selection import RFE
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
-
-_TRAIN_FILE = '/var/tmp/luciana/train10.csv'
-_TEST_FILE = '/var/tmp/luciana/test10.csv'
+_TRAIN_FILE = '/var/tmp/luciana/train20.csv'
+_TEST_FILE = '/var/tmp/luciana/test20.csv'
 _IDS_STOP = 3 # index + 1 where id features end
 _NP_STOP = 36 # index + 1 where non-personalized features end
 _FEAT_STOP = 48 # index + 1 where all the features end
@@ -32,18 +32,17 @@ _PREDICTORS = {'svm': SVC, 'rfc': RandomForestClassifier,
     'dtc': DecisionTreeClassifier, 'dtr': DecisionTreeRegressor,
     'dtrb': DecisionTreeRegressor, 'gnb': GaussianNB}
 _SEL_FEAT = None
-   # set(['r_avg_help_rec', 'num_words', 'u_avg_rel_help_giv',
-   # 'u_avg_help_giv', 'num_tokens', 'u_sd_help_giv', 'r_sd_help_rec',
-   # 'num_chars', 'u_avg_help_rec', 'u_pagerank', 'u_num_trustors', 
-   # 'u_sd_help_rec', 'u_num_trustees', 'num_sents', 'r_num_trustees',
-   # 'unique_ratio', 'u_avg_rating', 'kl_div', 'avg_sent', 'adj_ratio',
-   # 'noun_ratio', 'r_num_trustors', 'num_ratio', 'neg_sent', 'adv_ratio',
-   # 'u_num_reviews', 'cap_ratio', 'verb_ratio', 'pos_sent', 'sym_ratio',
-   # 'u_sd_rating', 'r_avg_rel_help_giv', 'r_avg_help_giv', 'trust',
-   # 'r_sd_help_giv', 'r_pagerank', 'r_avg_rating', 'r_num_reviews', 'rating',
-   # 'r_sd_rating', #'comp_ratio', 'fw_ratio', 'punct_ratio', 'pos_ratio',
-   # 'neg_ratio'
-   # ])
+#set(['rating', 'num_chars', 'num_tokens', 'num_words'])
+#'num_sents', 'unique_ratio',
+#'avg_sent', 'cap_ratio', 'noun_ratio', 'adj_ratio', 'adv_ratio', 'verb_ratio',
+#'comp_ratio', 'fw_ratio', 'sym_ratio', 'num_ratio', 'pos_sent', 'neg_sent',
+#'pos_ratio', 'neg_ratio', 'kl_div', 'r_num_reviews', 'r_avg_rating',
+#'r_avg_help_rec',
+#'r_num_trustors', 'r_num_trustees', 'r_avg_help_giv',
+#'r_avg_rel_help_giv', 'r_sd_rating', 'r_sd_help_rec', 'r_sd_help_giv',
+#'r_pagerank', 'u_num_reviews', 'u_avg_rating', 'u_avg_help_rec',
+#'u_num_trustors', 'u_num_trustees', 'u_avg_help_giv', 'u_avg_rel_help_giv',
+#'u_sd_rating', 'u_sd_help_rec', 'u_sd_help_giv', 'u_pagerank', 'trust'])
 
 """ Reads features and truth values from votes in a data file.
     Args:
@@ -68,12 +67,12 @@ def read(data_file, selected_features=None):
           selected_features])
     for row in csv_reader:
       ids.append(row[:_IDS_STOP])
-      data_np.append(np.array([float(f) for f in row[_IDS_STOP:_NP_STOP]]))
+      data_np.append(array([float(f) for f in row[_IDS_STOP:_NP_STOP]]))
       if selected_features:
-        data_p.append(np.array([float(row[i]) for i in range(len(row)) if i in
+        data_p.append(array([float(row[i]) for i in range(len(row)) if i in
             selected_indices]))
       else:
-        data_p.append(np.array([float(f) for f in row[_IDS_STOP:_FEAT_STOP]]))
+        data_p.append(array([float(f) for f in row[_IDS_STOP:_FEAT_STOP]]))
       truth.append(int(row[_FEAT_STOP]))
   return features, ids, data_np, data_p, truth
 
@@ -89,7 +88,7 @@ def read(data_file, selected_features=None):
       A scikit learn classifier object.
 """
 def train(train, truth, pred_code):
-  pred = _PREDICTORS[pred_code](cache_size=1000)
+  pred = _PREDICTORS[pred_code](cache_size=2000)
   pred.fit(train, truth)
   return pred
 
@@ -123,15 +122,19 @@ def test(test, pred):
       None. The results are output to stdout.
 """
 def evaluate_features(features, data, truth):
-  print 'Tree-based Feature Evaluation'
-  for index, feature in enumerate(rank_features_tree(features, data, truth)):
-    print '%d. %s' % (index, feature)
-  print '-----------------------------'
+#  print 'Tree-based Feature Evaluation'
+  tree_ranking = rank_features_tree(features, data, truth)
+#  for index, feature in enumerate(tree_ranking):
+#    print '%d. %s' % (index, feature)
+#  print '-----------------------------'
 
-  print 'RFE Feature Evaluation'
-  for index, feature in enumerate(rank_features_rfe(features, data, truth)):
-    print '%d. %s' % (index, feature)
-  print '-----------------------------'
+#  print 'RFE Feature Evaluation'
+  rfe_ranking = rank_features_rfe(features, data, truth)
+#  for index, feature in enumerate(rfe_ranking):
+#    print '%d. %s' % (index, feature)
+#  print '-----------------------------'
+
+  return tree_ranking, rfe_ranking
 
 
 """ Calculates squared errors.
@@ -386,6 +389,22 @@ def evaluate_linear_fit(data_np, data_p, truth):
   print '-----------------------------'
 
 
+""" Fits a scaler to a data.
+
+    Args:
+      scale_type: indicates the type of scale to adopt. It can be 'standard' to 
+        scale with zero mean and unit standard deviation, or 'minmax' for range
+        between 0 and 1.
+
+    Returns:
+      A scaler that fits the data.
+"""
+def fit_scaler(scale_type, data):
+  if scale_type == 'standard':
+    return StandardScaler().fit(data)
+  if scale_type == 'minmax':
+    return MinMaxScaler().fit(data)
+
 """ Main function of prediction module. Performs feature evaluation and
     perfomance comparisson between non-personalized and personalized predictors.
 
@@ -395,7 +414,7 @@ def evaluate_linear_fit(data_np, data_p, truth):
     Returns:
       None. The results are output to stdout.
 """
-def main(pred_code, rep=1):
+def main(pred_code, rep=1, scale=None):
   scores_p = []
   scores_np = []
   for _ in range(rep):
@@ -403,17 +422,86 @@ def main(pred_code, rep=1):
         _SEL_FEAT)
     _, test_ids, test_np, test_p, test_truth = read(_TEST_FILE, _SEL_FEAT)
 
+    if scale:
+      scaler_np = fit_scaler(scale, train_np)
+      train_np = scaler_np.transform(train_np)
+      test_np = scaler_np.transform(test_np)
+      scaler_p = fit_scaler(scale, train_p)
+      train_p = scaler_p.transform(train_p)
+      test_p = scaler_p.transform(test_p)
+
     if pred_code == 'eval':
       evaluate_features(features, train_p + test_p, train_truth + test_truth)
       evaluate_linear_fit(train_np + test_np, train_p + test_p, train_truth +
           test_truth)
       return
 
+    if pred_code.startswith('eval_lr'):
+      if pred_code[-1] == 'b':
+        avg, rtr_bias, rev_bias, aut_bias, rem_train_truth = \
+            remove_bias(train_ids, train_truth)
+        pred_p = train(train_p, rem_train_truth, pred_code[5:])
+      else:
+        pred_p = train(train_p, train_truth, pred_code[5:])
+      res_p = test(test_p, pred_p)
+      if pred_code[-1] == 'b':
+        res_p = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_p)
+      rmse_p = calculate_rmse(res_p, test_truth)
+      print 'ALL: %f' % rmse_p
+      tree_ranking, rfe_ranking = evaluate_features(features, train_p + test_p,
+          train_truth + test_truth)
+      cur_features = features[:]
+      cur_train = train_p
+      cur_test = test_p
+      print '(*) Tree-based feature selection'
+      for removal_feature in reversed(tree_ranking[1:]):
+        removal_index = cur_features.index(removal_feature)
+        cur_features.pop(removal_index)
+        cur_train = [array(instance.tolist()[:removal_index] +
+            instance.tolist()[removal_index+1:]) for instance in cur_train]
+        cur_test = [array(instance.tolist()[:removal_index] +
+            instance.tolist()[removal_index+1:]) for instance in cur_test]
+        if pred_code[-1] == 'b':
+          avg, rtr_bias, rev_bias, aut_bias, rem_train_truth = \
+              remove_bias(train_ids, train_truth)
+          pred_p = train(cur_train, rem_train_truth, pred_code[5:])
+        else:
+          pred_p = train(cur_train, train_truth, pred_code[5:])
+        res_p = test(cur_test, pred_p)
+        if pred_code[-1] == 'b':
+          res_p = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_p)
+        rmse_p = calculate_rmse(res_p, test_truth)
+        print 'TOP %d: %f' % (len(cur_features), rmse_p)
+      cur_features = features[:]
+      cur_train = train_p
+      cur_test = test_p
+      print '(*) RFE-based feature selection'
+      for removal_feature in reversed(rfe_ranking[1:]):
+        removal_index = cur_features.index(removal_feature)
+        cur_features.pop(removal_index)
+        cur_train = [array(instance.tolist()[:removal_index] +
+            instance.tolist()[removal_index+1:]) for instance in cur_train]
+        cur_test = [array(instance.tolist()[:removal_index] +
+            instance.tolist()[removal_index+1:]) for instance in cur_test]
+        if pred_code[-1] == 'b':
+          avg, rtr_bias, rev_bias, aut_bias, rem_train_truth = \
+              remove_bias(train_ids, train_truth)
+          pred_p = train(cur_train, rem_train_truth, pred_code[5:])
+        else:
+          pred_p = train(cur_train, train_truth, pred_code[5:])
+        res_p = test(cur_test, pred_p)
+        if pred_code[-1] == 'b':
+          res_p = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_p)
+        rmse_p = calculate_rmse(res_p, test_truth)
+        print 'TOP %d: %f' % (len(cur_features), rmse_p)
+      return
+    
     if pred_code[-1] == 'b':
       avg, rtr_bias, rev_bias, aut_bias, train_truth = remove_bias(train_ids,
           train_truth)
 
     pred_np = train(train_np, train_truth, pred_code)
+
     pred_p = train(train_p, train_truth, pred_code)
 
     res_np = test(test_np, pred_np)
@@ -451,4 +539,5 @@ def main(pred_code, rep=1):
 
 
 if __name__ == '__main__':
-  main(argv[1] if len(argv) > 1 else 'rfc', int(argv[2]) if len(argv) > 2 else 1)
+  main(argv[1] if len(argv) > 1 else 'rfc', int(argv[2]) if len(argv) > 2 else 
+      1, argv[3] if len(argv) > 3 else None)
