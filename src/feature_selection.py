@@ -60,6 +60,40 @@ def rank_features_rfe(features, data, truth):
   return ranking
 
 
+""" Gets a probability distribution from a collection of values. 
+
+    Args:
+      collection: a list representing a collection of values with repetition.
+
+    Returns:
+      A dictionary indexed by each value in collection and containing the
+    probability frequency divided by size of collection).
+"""
+def get_probability_distribution(collection):
+  freq = {}
+  size = len(collection)
+  for value in collection:
+    if value not in freq:
+      freq[value] = 0.0
+    freq[value] += 1.0
+  return {value: freq[value] / size for value in freq}
+
+
+""" Calculates the entropy of a collection. The entropy is a metric opposite to
+    purity.
+
+    Args:
+      collection: a list with values to calculate the entropy of.
+
+    Returns:
+      A real value representing the entropy.
+"""
+def calculate_entropy(collection):
+  entropy = 0.0
+  prob = get_probability_distribution(collection)
+  return sum([- prob[value] * log(prob[value], 2) for value in prob])
+
+
 """ Ranks the features using Information Gain method. 
 
     Args:
@@ -73,8 +107,19 @@ def rank_features_rfe(features, data, truth):
       A list with feature names sorted by importance.
 """
 def rank_features_infogain(features, data, truth):
-  # TODO
-  pass
+  info_gain = []
+  size = len(truth)
+  old_entropy = calculate_entropy(truth)
+  for index in range(len(data[0])):
+    value_prob = get_probability_distribution([inst[index] for inst in data])
+    partitions = {v: [truth[i] for i in range(size) if data[i][index] == v]
+        for v in value_prob}
+    new_entropy = 0.0
+    for value, prob in value_prob.items():
+      new_entropy += prob * entropy(partitions[value])
+    info_gain.append(old_entropy - new_entropy)
+  return sorted(features, key=lambda f: info_gain[features.index(f)],
+      reverse=True)
 
 
 """ Evaluate non-personalized and personalized features using two methods: a
