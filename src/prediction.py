@@ -4,9 +4,23 @@
     Realizes the task of pred_code: a code for the predictor, used for indexing
     the dictionary _PREDICTORS.
 
-    Returns:
-      A scikit learn classifier object.
+    Usage:
+      $ python -m src.prediction -p <predictor> [-b <bias_code>]
+        [-s <scaling_type>] [-i <iteration_count>]
+    in the root directory of the project. In this command,
+      (*) <predictor> is a code for the predictor to use; it is mandatory and
+    should be one key defined in _PREDICTORS;
+      (*) <bias> is a string with one to three characters containing a
+    subset of {'r', 'a', 'v'}, representing, respectively, review, author and
+    voter biases to target;
+      (*) <scaling_type> can be 'standard' for zero mean and unit variance, or
+    'minmax' for a range between 0 and 1;
+      (*) <iteration_count> is a positive integer with the intended number of
+    predictor fit and evaluation iterations (useful when the predictor involves
+    randomness, such as Random Forest Classifier).
 """
+
+
 from csv import reader
 from math import sqrt
 from sys import argv
@@ -17,32 +31,23 @@ from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVC, SVR, LinearSVC
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.naive_bayes import GaussianNB
-from sklearn.feature_selection import RFE
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+
+from src.prediction_evaluation import calculate_rmse
+from src.bias_correction import remove_bias, adjust_bias
+from src.scaling import scale_features 
+
 
 _TRAIN_FILE = '/var/tmp/luciana/train20.csv'
 _TEST_FILE = '/var/tmp/luciana/test20.csv'
 _IDS_STOP = 3 # index + 1 where id features end
-_NP_STOP = 36 # index + 1 where non-personalized features end
-_FEAT_STOP = 48 # index + 1 where all the features end
-_PREDICTORS = {'svm': SVC, 'rfc': RandomForestClassifier,
-    'lr': LinearRegression, 'lrb': LinearRegression, 'svr': SVR, 'svrb': SVR,
-    'lsvm': LinearSVC,
-    'rfr': RandomForestRegressor, 'rfrb': RandomForestRegressor,
+_NP_STOP = 34 # index + 1 where non-personalized features end
+_FEAT_STOP = 46 # index + 1 where all the features end
+_PREDICTORS = {'svm': SVC, 'lsvm': LinearSVC, 'svr': SVR,
+    'rfr': RandomForestRegressor, 'rfc': RandomForestClassifier,
     'dtc': DecisionTreeClassifier, 'dtr': DecisionTreeRegressor,
-    'dtrb': DecisionTreeRegressor, 'gnb': GaussianNB}
-_SEL_FEAT = None
-#set(['rating', 'num_chars', 'num_tokens', 'num_words'])
-#'num_sents', 'unique_ratio',
-#'avg_sent', 'cap_ratio', 'noun_ratio', 'adj_ratio', 'adv_ratio', 'verb_ratio',
-#'comp_ratio', 'fw_ratio', 'sym_ratio', 'num_ratio', 'pos_sent', 'neg_sent',
-#'pos_ratio', 'neg_ratio', 'kl_div', 'r_num_reviews', 'r_avg_rating',
-#'r_avg_help_rec',
-#'r_num_trustors', 'r_num_trustees', 'r_avg_help_giv',
-#'r_avg_rel_help_giv', 'r_sd_rating', 'r_sd_help_rec', 'r_sd_help_giv',
-#'r_pagerank', 'u_num_reviews', 'u_avg_rating', 'u_avg_help_rec',
-#'u_num_trustors', 'u_num_trustees', 'u_avg_help_giv', 'u_avg_rel_help_giv',
-#'u_sd_rating', 'u_sd_help_rec', 'u_sd_help_giv', 'u_pagerank', 'trust'])
+    'lr': LinearRegression, 'gnb': GaussianNB}
+_Z = 1.959964 # 95% of confidence for IC with both sides
+
 
 """ Reads features and truth values from votes in a data file.
     Args:
@@ -88,7 +93,10 @@ def read(data_file, selected_features=None):
       A scikit learn classifier object.
 """
 def train(train, truth, pred_code):
-  pred = _PREDICTORS[pred_code](cache_size=2000)
+  if pred_code == 'SVR' or pred_code == 'SVM':
+    pred = _PREDICTORS[pred_code](cache_size=2000)
+  else:
+    pred = _PREDICTORS[pred_code]()
   pred.fit(train, truth)
   return pred
 
@@ -108,213 +116,6 @@ def test(test, pred):
   return result
 
 
-""" Evaluate non-personalized and personalized features using two methods: a
-    tree-based one, using Random Forest Classifier, and RFE (Recursive Feature
-    Elimination) in linear regression.
-
-    Args:
-      data: a list of instances, represented as numpy arrays continaing certain
-    features.
-      truth: a list of integers, from 0 to 5, containing the correct values for
-    the instances.
-
-    Returns:
-      None. The results are output to stdout.
-"""
-def evaluate_features(features, data, truth):
-#  print 'Tree-based Feature Evaluation'
-  tree_ranking = rank_features_tree(features, data, truth)
-#  for index, feature in enumerate(tree_ranking):
-#    print '%d. %s' % (index, feature)
-#  print '-----------------------------'
-
-#  print 'RFE Feature Evaluation'
-  rfe_ranking = rank_features_rfe(features, data, truth)
-#  for index, feature in enumerate(rfe_ranking):
-#    print '%d. %s' % (index, feature)
-#  print '-----------------------------'
-
-  return tree_ranking, rfe_ranking
-
-
-""" Calculates squared errors.
-
-    Args:
-      result: a list of predicted values assigned to the instances.
-      truth: a list with the corrected values.
-
-    Returns:
-      A list of squared errros, one for each instance.
-"""
-def calculate_squared_errors(result, truth):
-  errors = [(result[i] - truth[i]) ** 2 for i in range(len(result))]
-  return errors
-
-
-""" Calculates RMSE (Root Mean Squared Error) of a prediction task.
-
-    Args:
-      result: a list of predicted values assigned to the instances.
-      truth: a list with the corrected values.
-
-    Returns:
-      A real value representing the RMSE.
-"""
-def calculate_rmse(result, truth):
-  errors = calculate_squared_errors(result, truth)
-  rmse = sqrt(float(sum(errors)) / len(errors))
-  return rmse
-
-
-""" Calculates the accuracy of a prediction task.
-
-    Args:
-      result: a list with the predicted values for the instances.
-      truth: a list with the correct values.
-
-    Returns:
-      A real value representing the accuracy of the method.
-"""
-def calculate_accuracy(result, truth):
-  errors = calculate_squared_errors(result, truth)
-  binary_errors = [1 if e > 0 else 0 for e in errors]
-  accuracy = float(sum(binary_errors)) / len(binary_errors)
-  return 1 - accuracy
-
-
-""" Ranks the features using a tree-based method.
-
-    Args:
-      features: the list with the feature names, in the order they appear in
-    data.
-      data: a list with numpy array represeting the instances.
-      truth: a list with integers, ranging from 0 to 5, with the helpfulness
-    votes for each vote instance.
-
-    Returns:
-      A list with feature names sorted by importance.
-"""
-def rank_features_tree(features, data, truth):
-  pred = RandomForestClassifier()
-  pred.fit(data, truth)
-  importances = pred.feature_importances_ # the higher the better
-  ranking = sorted(features, key=lambda x: importances[features.index(x)],
-    reverse=True)
-  return ranking
-
-
-""" Ranks the features using RFE (Recursive Feature Elimination) method.
-
-    Args:
-      features: the list with the feature names, in the order they appear in
-    data.
-      data: a list with numpy array represeting the instances.
-      truth: a list with integers, ranging from 0 to 5, with the helpfulness
-    votes for each vote instance.
-
-    Returns:
-      A list with feature names sorted by importance.
-"""
-def rank_features_rfe(features, data, truth):
-  pred = LinearRegression()
-  rfe = RFE(estimator=pred, n_features_to_select=1, step=1)
-  rfe.fit(data, truth)
-  importances = rfe.ranking_ # the lower the better
-  ranking = sorted(features, key=lambda x: importances[features.index(x)])
-  return ranking
-
-
-""" Removes bias from helpfulness votes. The bias may correspond to review's,
-    author's or voter's helpfulness average.
-
-    Args:
-      ids: a list of arrays containing the ids of the votes instances (review,
-        author, voter).
-      truth: a list containing the helpfulness votes associated to the
-        instances.
-
-    Returns:
-      Global helpfulness average, dictionary of voter bias, dictionary of
-    review bias, dictionary of author bias and a list of truth values with bias
-    removed. 
-"""
-def remove_bias(ids, truth):
-  raters = {}
-  reviews = {}
-  authors = {}
-  rtr_bias = {}
-  rev_bias = {}
-  aut_bias = {}
-  all_sum = 0
-  for index, instance in enumerate(ids):
-    rater = instance[2] # rater id
-    author = instance[1] # author id
-    review = instance[0] # review id
-    if rater not in raters:
-      raters[rater] = {}
-      raters[rater]['sum'] = 0
-      raters[rater]['count'] = 0
-    raters[rater]['sum'] += truth[index] # truth
-    raters[rater]['count'] += 1
-    if author not in authors:
-      authors[author] = {}
-      authors[author]['sum'] = 0
-      authors[author]['count'] = 0
-    authors[author]['sum'] += truth[index] # truth
-    authors[author]['count'] += 1
-    if review not in reviews:
-      reviews[review] = {}
-      reviews[review]['sum'] = 0
-      reviews[review]['count'] = 0
-    reviews[review]['sum'] += truth[index] # truth
-    reviews[review]['count'] += 1
-  all_avg = float(sum(truth)) / len(truth)
-  for rtr in raters:
-    rtr_bias[rtr] = float(raters[rtr]['sum']) / raters[rtr]['count'] - all_avg
-  for aut in authors:
-    aut_bias[aut] = float(authors[aut]['sum']) / authors[aut]['count'] - all_avg
-  for rev in reviews:
-    rev_bias[rev] = float(reviews[rev]['sum']) / reviews[rev]['count'] - all_avg
-  new_truth = [0] * len(truth)
-  for index, instance in enumerate(ids):
-    rtr = instance[2] # rater id
-    aut = instance[1] # author id
-    rev = instance[0] # review id
-    new_truth[index] = truth[index] - all_avg - rev_bias[rev] - rtr_bias[rtr]
-       
-  return all_avg, rtr_bias, rev_bias, aut_bias, new_truth
-
-
-""" Adjusts predicted truth values accounting for bias.
-
-    Args:
-      avg: global average of helpfulness.
-      rtr_bias: dictionary with voter bias indexed by voter id.
-      rev_bias: dictionary with review bias indexed by review id.
-      aut_bias: dictionary with author bias indexed by author id.
-      ids: list of arrays containing ids (review, author, voter) for the
-        instances.
-      res: list of predicted results to adjust with bias.
-
-    Returns:
-      A list of predicted values after bias ajust.
-"""
-def adjust_bias(avg, rtr_bias, rev_bias, aut_bias, ids, res):
-  new_res = res[:]
-  for index, instance in enumerate(ids):
-    rater = instance[2]
-    author = instance[1]
-    review = instance[0]
-    new_res[index] += avg
-    if rater in rtr_bias: # not cold-start rater
-      new_res[index] += rtr_bias[rater]
-#    if author in aut_bias: # not cold-start author
-#      new_res[index] += aut_bias[author]
-    if review in rev_bias: # not cold-start review
-      new_res[index] += rev_bias[review]
-  return new_res
-
-
 """ Compares non-personalized with personalized prediction of helpfulness votes.
 
     Args:
@@ -326,7 +127,6 @@ def adjust_bias(avg, rtr_bias, rev_bias, aut_bias, ids, res):
       None. The results are output to stdout.
 """
 def compare(res_np, res_p, test_truth):
-
   print 'Non-Personalized Performance:'
   rmse_np = calculate_rmse(res_np, test_truth)
   print 'RMSE: %f' % rmse_np 
@@ -340,204 +140,99 @@ def compare(res_np, res_p, test_truth):
   return rmse_np, rmse_p
 
 
-""" Filters features according to a selected set.
+""" Prints summary of scores, with confidence interval, for a set of
+    predictions' runs.
+
+    Observations:
+      It is considered that at least 30 iterations are performed, thus allowing
+    no assumption about data distribution.
 
     Args:
-      features: a list of strings containing features names.
-      data: list of instances modeled as vectors.
-      selected: a set of strings with the selected features names.
-    
-    Returns:
-      A list of instance modeled as vectors projected on the selected features.
-"""
-def filter_features(features, data, selected):
-  new_data = []
-  sel_columns = set()
-  for index, feature in enumerate(features):
-    if feature in selected:
-      sel_columns.add(index)
-  for instance in data:
-    instance = instance.tolist()
-    instance = [instance[i] for i in range(len(instance)) if i in sel_columns]
-    instance = array(instance)
-    new_data.append(instance)
-  return new_data
-
-
-""" Evaluates linear fit of the data.
-
-    Args:
-      data_np: a list of instances containing only non-personalized features.
-      data_p: a list of instances containing both non-personalized and
-        personalized features.
-      truth: a list of truth values associated to instances.
+      scores_np: list with iterations scores for non-personalized version.
+      scores_p: list with iterations scores for personalized version.
 
     Returns:
-      None. The result is output to stdout and contains R-squared evaluation
-    over non-personalized and personalized models.
+      None. The output is displayed on stdout.
 """
-def evaluate_linear_fit(data_np, data_p, truth):
-  lr_np = LinearRegression()
-  lr_np.fit(data_np, truth)
-  print 'Linear Fit Evaluation'
-  print 'Non-personalized'
-  print 'R-squared: %f' % lr_np.score(data_np, truth)
-  lr_p = LinearRegression()
-  lr_p.fit(data_p, truth)
-  print 'Personalized'
-  print 'R-squared: %f' % lr_p.score(data_p, truth)
-  print '-----------------------------'
-
-
-""" Fits a scaler to a data.
-
-    Args:
-      scale_type: indicates the type of scale to adopt. It can be 'standard' to 
-        scale with zero mean and unit standard deviation, or 'minmax' for range
-        between 0 and 1.
-
-    Returns:
-      A scaler that fits the data.
-"""
-def fit_scaler(scale_type, data):
-  if scale_type == 'standard':
-    return StandardScaler().fit(data)
-  if scale_type == 'minmax':
-    return MinMaxScaler().fit(data)
-
-""" Main function of prediction module. Performs feature evaluation and
-    perfomance comparisson between non-personalized and personalized predictors.
-
-    Args:
-      pred_code: the code for the chosen predictor, using to index _PREDICTORS.
-
-    Returns:
-      None. The results are output to stdout.
-"""
-def main(pred_code, rep=1, scale=None):
-  scores_p = []
-  scores_np = []
-  for _ in range(rep):
-    features, train_ids, train_np, train_p, train_truth = read(_TRAIN_FILE,
-        _SEL_FEAT)
-    _, test_ids, test_np, test_p, test_truth = read(_TEST_FILE, _SEL_FEAT)
-
-    if scale:
-      scaler_np = fit_scaler(scale, train_np)
-      train_np = scaler_np.transform(train_np)
-      test_np = scaler_np.transform(test_np)
-      scaler_p = fit_scaler(scale, train_p)
-      train_p = scaler_p.transform(train_p)
-      test_p = scaler_p.transform(test_p)
-
-    if pred_code == 'eval':
-      evaluate_features(features, train_p + test_p, train_truth + test_truth)
-      evaluate_linear_fit(train_np + test_np, train_p + test_p, train_truth +
-          test_truth)
-      return
-
-    if pred_code.startswith('eval_lr'):
-      if pred_code[-1] == 'b':
-        avg, rtr_bias, rev_bias, aut_bias, rem_train_truth = \
-            remove_bias(train_ids, train_truth)
-        pred_p = train(train_p, rem_train_truth, pred_code[5:])
-      else:
-        pred_p = train(train_p, train_truth, pred_code[5:])
-      res_p = test(test_p, pred_p)
-      if pred_code[-1] == 'b':
-        res_p = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_p)
-      rmse_p = calculate_rmse(res_p, test_truth)
-      print 'ALL: %f' % rmse_p
-      tree_ranking, rfe_ranking = evaluate_features(features, train_p + test_p,
-          train_truth + test_truth)
-      cur_features = features[:]
-      cur_train = train_p
-      cur_test = test_p
-      print '(*) Tree-based feature selection'
-      for removal_feature in reversed(tree_ranking[1:]):
-        removal_index = cur_features.index(removal_feature)
-        cur_features.pop(removal_index)
-        cur_train = [array(instance.tolist()[:removal_index] +
-            instance.tolist()[removal_index+1:]) for instance in cur_train]
-        cur_test = [array(instance.tolist()[:removal_index] +
-            instance.tolist()[removal_index+1:]) for instance in cur_test]
-        if pred_code[-1] == 'b':
-          avg, rtr_bias, rev_bias, aut_bias, rem_train_truth = \
-              remove_bias(train_ids, train_truth)
-          pred_p = train(cur_train, rem_train_truth, pred_code[5:])
-        else:
-          pred_p = train(cur_train, train_truth, pred_code[5:])
-        res_p = test(cur_test, pred_p)
-        if pred_code[-1] == 'b':
-          res_p = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_p)
-        rmse_p = calculate_rmse(res_p, test_truth)
-        print 'TOP %d: %f' % (len(cur_features), rmse_p)
-      cur_features = features[:]
-      cur_train = train_p
-      cur_test = test_p
-      print '(*) RFE-based feature selection'
-      for removal_feature in reversed(rfe_ranking[1:]):
-        removal_index = cur_features.index(removal_feature)
-        cur_features.pop(removal_index)
-        cur_train = [array(instance.tolist()[:removal_index] +
-            instance.tolist()[removal_index+1:]) for instance in cur_train]
-        cur_test = [array(instance.tolist()[:removal_index] +
-            instance.tolist()[removal_index+1:]) for instance in cur_test]
-        if pred_code[-1] == 'b':
-          avg, rtr_bias, rev_bias, aut_bias, rem_train_truth = \
-              remove_bias(train_ids, train_truth)
-          pred_p = train(cur_train, rem_train_truth, pred_code[5:])
-        else:
-          pred_p = train(cur_train, train_truth, pred_code[5:])
-        res_p = test(cur_test, pred_p)
-        if pred_code[-1] == 'b':
-          res_p = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_p)
-        rmse_p = calculate_rmse(res_p, test_truth)
-        print 'TOP %d: %f' % (len(cur_features), rmse_p)
-      return
-    
-    if pred_code[-1] == 'b':
-      avg, rtr_bias, rev_bias, aut_bias, train_truth = remove_bias(train_ids,
-          train_truth)
-
-    pred_np = train(train_np, train_truth, pred_code)
-
-    pred_p = train(train_p, train_truth, pred_code)
-
-    res_np = test(test_np, pred_np)
-    res_p = test(test_p, pred_p)
-
-    if pred_code[-1] == 'b':
-      res_np = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_np)
-      res_p = adjust_bias(avg, rtr_bias, rev_bias, aut_bias, test_ids, res_p)
-
-    rmse_np, rmse_p = compare(res_np, res_p, test_truth)
-    scores_np.append(rmse_np)
-    scores_p.append(rmse_p)
-
-  Z = 1.959964
-  if rep > 1:
+def print_summary(scores_np, scores_p):
     print '*******************'
     print 'SUMMARY'
     mean_np = sum(scores_np) / len(scores_np)
     std_np = std(scores_np, ddof=1)
-    width_np = Z * std_np / sqrt(rep)
-    print 'Non-personalized:'
-    print 'Measures: %s' % scores_np
+    width_np = _Z * std_np / sqrt(rep)
+    print '(*) Non-personalized:'
     print 'Mean RMSE: %f' % mean_np 
     print 'Empiric SD of RMSE: %f' % std_np 
     print 'IC of 95%%: (%f, %f)' % (mean_np - width_np, mean_np + width_np)
     mean_p = sum(scores_p) / len(scores_p)
     std_p = std(scores_p, ddof=1)
-    width_p = Z * std_p / sqrt(rep)
-    print 'Personalized:'
-    print 'Measures: %s' % scores_p
+    width_p = _Z * std_p / sqrt(rep)
+    print ''
+    print '(*) Personalized:'
     print 'Mean RMSE: %f' % mean_p 
     print 'Empiric SD of RMSE: %f' % std_p
     print 'IC of 95%%: (%f, %f)' % (mean_p - width_p, mean_p + width_p)
     print '*******************'
 
 
+""" Main function of prediction module. Performs feature evaluation and
+    perfomance comparisson between non-personalized and personalized predictors.
+
+    Args:
+      pred_code: the code for the chosen predictor, using to index _PREDICTORS.
+      scale: scale type to be performed or None.
+      bias_code: bias code or None.
+      rep: number of repetitions of prediction to run.
+
+    Returns:
+      None. The results are output to stdout.
+"""
+def main(pred_code, scale, bias_code, rep):
+  scores_np, scores_p = [], []
+  
+  features, train_ids, train_np, train_p, train_truth = read(_TRAIN_FILE,
+      _SEL_FEAT)
+  _, test_ids, test_np, test_p, test_truth = read(_TEST_FILE, _SEL_FEAT)
+
+  if scale:
+    train_np, test_np = scale_features(train_np, test_np)
+    train_p, test_p = scale_features(train_p, test_p)
+  
+  for _ in range(rep):
+    if bias_code:
+      bias, bias_train_truth = remove_bias(train_ids, train_truth, bias_code)
+      pred_np = train(train_np, bias_train_truth, pred_code)
+      pred_p = train(train_p, bias_train_truth, pred_code)
+    else:
+      pred_np = train(train_np, train_truth, pred_code)
+      pred_p = train(train_p, train_truth, pred_code)
+
+    res_np, res_p = test(test_np, pred_np), test(test_p, pred_p)
+
+    if bias_code:
+      res_np = adjust_bias(bias, test_ids, res_np, bias_code)
+      res_p = adjust_bias(bias, test_ids, res_p, bias_code)
+
+    rmse_np, rmse_p = compare(res_np, res_p, test_truth)
+    scores_np.append(rmse_np)
+    scores_p.append(rmse_p)
+
+  if rep > 1:
+    print_summary(scores_np, scores_p)
+
+
 if __name__ == '__main__':
-  main(argv[1] if len(argv) > 1 else 'rfc', int(argv[2]) if len(argv) > 2 else 
-      1, argv[3] if len(argv) > 3 else None)
+  pred = None
+  scale = None
+  bias_code = None
+  rep = 1
+  for i in range(1, len(argv), 2):
+    if argv[i] == 'p':
+      pred = argv[i+1]
+    elif argv[i] == 's':
+      scale = argv[i+1]
+    elif argv[i] == 'b':
+      bias_code = argv[i+1]
+    elif argv[i] == 'i':
+      rep = int(argv[i+1])
+  main(pred, scale, bias_code, rep)
