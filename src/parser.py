@@ -10,14 +10,12 @@ from networkx import DiGraph
 
 
 _FILE = 'data/rating.txt'
-PUNCTUATION = [';', ':', ',', '.', '!', '?']
-    # source: http://www.nltk.org/api/nltk.tokenize.html
 
 
 """ Iterates through reviews, parsing the file content.
 
     Args:
-        None.
+        verbose: indicate whether exceptions should be printed to stdout.
 
     Returns:
         A dictionary representing the review with keys: "id",
@@ -49,6 +47,8 @@ def parse_reviews(verbose=False):
         raise Exception('user')
       if l[1].strip():
         review['product'] = l[1].strip()
+        if not review['product']:
+          raise Exception()
       else:
         raise Exception('product')
       if l[2].strip():
@@ -57,6 +57,8 @@ def parse_reviews(verbose=False):
         raise Exception('category')
       try:
         review['rating'] = int(l[3]) / 10
+        if review['rating'] < 0 or review['rating'] > 5:
+          raise Exception()
       except Exception:
         raise Exception('rating')
       if l[5].strip():

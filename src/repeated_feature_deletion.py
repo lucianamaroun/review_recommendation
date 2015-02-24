@@ -93,12 +93,12 @@ if __name__ == '__main__':
   bias_code = None
   rank_type = None
   for i in range(1, len(argv), 2):
-    if argv[i] == 'p':
+    if argv[i] == '-p':
       pred = argv[i+1]
-    elif argv[i] == 's':
+    elif argv[i] == '-s':
       scale = argv[i+1]
-    elif argv[i] == 'b':
+    elif argv[i] == '-b':
       bias_code = argv[i+1]
-    elif argv[i] == 'r':
+    elif argv[i] == '-r':
       rep = int(argv[i+1])
   repeatedly_remove(pred, scale, bias_code, rank_type)

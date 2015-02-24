@@ -16,7 +16,7 @@ from networkx import pagerank
 """ Initializes user features.
 
     Args:
-      None.
+      user_id: the id of the user to create the dictionary of.
 
     Returns:
       A dictionary with initialized values representing a user.
@@ -44,14 +44,16 @@ def create_user(user_id):
 
     Args:
       user: the user dictionary whose fields must be updated.
-      rating: the rating value.
+      rating: the rating value associated to review.
+      rel_rating: the relative rating of review.
 
     Returns:
       None. Changes are made in place.
 """
-def add_user_rating(user, rating):
+def add_user_rating(user, rating, rel_rating):
   user['num_reviews'] += 1
   user['avg_rating'] += float(rating)
+  user['avg_rel_rating'] += float(rel_rating)
   user['sd_rating'].append(float(rating))
 
 
@@ -59,22 +61,22 @@ def add_user_rating(user, rating):
 
     Args:
       reviewer: the user dictionary of the reviewer.
-      rater: the user dictionary of the rater.
+      voter: the user dictionary of the voter.
       vote: the value of the vote.
       avg_help: the average helpfulness of the review being voted.
 
     Returns:
       None. Changes are made in place.
 """
-def add_user_vote(reviewer, rater, vote, avg_help):
+def add_user_vote(reviewer, voter, vote, avg_help):
   reviewer['num_votes_rec'] += 1
   reviewer['avg_help_rec'] += int(vote)
   reviewer['sd_help_rec'].append(vote)
 
-  rater['num_votes_giv'] += 1
-  rater['avg_help_giv'] += int(vote)
-  rater['avg_rel_help_giv'] +=  float(vote) - avg_help
-  rater['sd_help_giv'].append(float(vote))
+  voter['num_votes_giv'] += 1
+  voter['avg_help_giv'] += int(vote)
+  voter['avg_rel_help_giv'] +=  float(vote) - avg_help
+  voter['sd_help_giv'].append(float(vote))
 
 
 """ Finalizes user features, normalizing or aggregating features.
@@ -91,7 +93,7 @@ def finalize_user_features(users, trusts):
   for user in users:
     if users[user]['num_reviews'] == 0 or users[user]['num_votes_rec'] == 0 \
         or users[user]['num_votes_giv'] == 0:
-      remove_users.add(user)
+      remove_users.add(user) # removing cold starts
       continue
     users[user]['avg_rating'] /= float(users[user]['num_reviews'])
     users[user]['avg_rel_rating'] /= float(users[user]['num_reviews'])
@@ -104,22 +106,6 @@ def finalize_user_features(users, trusts):
     users[user]['pagerank'] = prank[user] if user in prank else 0.0
   for user in remove_users:
     users.pop(user, None)
-
-
-""" Includes trust relation under trustor and trustee statistics.
-
-    Args:
-      trustor: the user dictionary of the person who trusts in the relation.
-      trustee: the user dictionary of the person who is trusted in the relation.
-
-    Returns:
-      None. Changes are made in place.
-"""
-def account_trust_relation(trustor, trustee):
-  if trustor:
-    trustor['num_trustees'] += 1
-  if trustee:
-    trustee['num_trustors'] += 1
 
 
 """ Groups votes by review.
@@ -161,19 +147,19 @@ def model_users(reviews, train, trusts):
     if review['user'] not in users:
       rev_dict = create_user(review['user'])
       users[review['user']] = rev_dict
-    add_user_rating(users[review['user']], review['rating'])
+    add_user_rating(users[review['user']], review['rating'],
+        review['rel_rating'])
     avg_help = float(sum([v['vote'] for v in grouped_train[review_id]])) / \
         len(grouped_train[review_id])
     for vote in grouped_train[review_id]:
-      if vote['rater'] not in users:
-        rat_dict = create_user(vote['rater'])
-        users[vote['rater']] = rat_dict
-      add_user_vote(users[review['user']], users[vote['rater']], vote['vote'],
+      if vote['voter'] not in users:
+        rat_dict = create_user(vote['voter'])
+        users[vote['voter']] = rat_dict
+      add_user_vote(users[review['user']], users[vote['voter']], vote['vote'],
           avg_help)
-  for trustor in trusts:
-    for trustee in trusts[trustor]:
-      account_trust_relation(users[trustor] if trustor in users else None,
-          users[trustee] if trustee in users else None)
+  for user in trusts:
+    users[user]['num_trustors'] = trusts.in_degree(user)
+    users[user]['num_trustees'] = trusts.out_degree(user)
   finalize_user_features(users, trusts)
 
   return users

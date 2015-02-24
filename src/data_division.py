@@ -36,8 +36,6 @@ def model_votes(reviews):
       vote['date'] = review['date']
       votes.append(vote)
 
-  print '# votes %d' % len(votes)
-
   return votes
 
 
@@ -46,7 +44,7 @@ def model_votes(reviews):
     for test.
 
     Args:
-      reviews: set of reviews to extract votes from. 
+      reviews: dictionary of reviews to extract votes from. 
 
     Returns:
       Two lists of vote dictionaries, the first representing the train set and

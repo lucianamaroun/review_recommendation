@@ -8,13 +8,14 @@
 """
 
 
+from string import punctuation
 from math import log
 from copy import deepcopy
 from multiprocessing import Pool
 from re import match
 
 from textblob import TextBlob
-from nltk.tokenize import wordpunct_tokenize, sent_tokenize, RegexpTokenizer
+from nltk.tokenize import word_tokenize, sent_tokenize, RegexpTokenizer
 from nltk import pos_tag
 from nltk.corpus import wordnet
 import traceback
@@ -23,7 +24,20 @@ from src import parser
 from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 
-_NUM_THREADS = 8
+_NEGATION = set(['not', 'no', 'n\'t'])
+_SUBSTITUTE = {
+  # unicode as symbol
+    '  \d\d\d\d;': '#', '&#\d\d\d\d;': '#', 'quot;': '#', 'lt;': '#',
+    'gt;': '#',
+  # fixing negation contraction
+    'dont': 'don\'t', 'didnt': 'didn\'t', 'havent': 'haven\'t',
+    'wouldnt': 'wouldn\'t', 'wont': 'won\'t', 'doesnt': 'doesn\'t',
+    'isnt': 'isn\'t', 'wasnt': 'wasn\'t', 'shouldnt': 'shouldn\'t',
+    'couldnt': 'couldn\'t', 'cant': 'can\'t', 'werent': 'weren\'t'
+  }
+_PUNCTUATION = set(['!', '?', ':', ';', ',', '.']) 
+    # source: http://www.nltk.org/api/nltk.tokenize.html
+_SYMBOLS = punctuation
 
 
 """ Models a review.
@@ -80,9 +94,8 @@ def get_foreign_ratio(text):
     list of feature names.
 """
 def get_textual_features(text):
-    text = text.replace(r'  \d\d\d\d;','#').replace(r'&#\d\d\d\d;','#') \
-        .replace('quot;', '#').replace('lt;', '#').replace('gt;', '#')
-        # it is considered that unicode are commonly symbols.
+    for sub, target in _SUBSTITUTE.items():
+      text = text.replace(sub, target)
     lower_text = text.lower()
 
     features = {}
@@ -90,11 +103,13 @@ def get_textual_features(text):
     for feat in length_feat:
         features[feat] = length_feat[feat]
 
-    pos_feat = get_pos_stats(lower_text)
+    tokens = word_tokenize(text)
+    tags = pos_tag(tokens)
+    pos_feat = get_pos_stats(tags)
     for feat in pos_feat:
         features[feat] = pos_feat[feat]
 
-    sent_feat = get_sent_stats(lower_text)
+    sent_feat = get_sent_stats(tags)
     for feat in sent_feat:
       features[feat] = sent_feat[feat]
 
@@ -118,7 +133,7 @@ def get_text_length_stats(text):
 
     word_tokenizer = RegexpTokenizer(r'\w+')
 
-    tokens = wordpunct_tokenize(text)
+    tokens = word_tokenize(text)
     words = word_tokenizer.tokenize(text)
     sents = sent_tokenize(text)
     capsents = [s for s in sents if match('[A-Z]', s[0])] 
@@ -141,23 +156,20 @@ def get_text_length_stats(text):
     (adjective or adverb), foreign words, symbols, numbers and punctuations.
 
     Args:
-        text: the text to calculate POS tags ratios from.
+      tags: list of pairs (word, tag). 
 
     Returns:
-        A dictionary indexed by keys "noun_ratio", "adj_ratio", "adv_ratio",
+      A dictionary indexed by keys "noun_ratio", "adj_ratio", "adv_ratio",
     "verb_ratio", "comp_ratio", "fw_ratio", "sym_ratio", "num_ratio" and
     "punct_ratio", and containing as values the ratios of the corresponding
     tag accross all words of the text.
 """
-def get_pos_stats(text):
+def get_pos_stats(tags):
     features = {'noun_ratio': 0.0, 'adj_ratio': 0.0, 'adv_ratio': 0.0,
         'verb_ratio': 0.0, 'comp_ratio': 0.0, 'fw_ratio': 0.0,
         'sym_ratio': 0.0, 'num_ratio': 0.0, 'punct_ratio': 0.0}
 
-    tokens = wordpunct_tokenize(text)
-    tags = pos_tag(tokens)
-
-    for _, tag in tags:
+    for word, tag in tags:
       if tag == 'FW' or (match('[a-z]+', tag) and wordnet.synsets(tag) == []):
         features['fw_ratio'] += 1.0 # order is important
       elif tag.startswith('NN'):
@@ -172,16 +184,16 @@ def get_pos_stats(text):
         features['comp_ratio'] += 1.0
       elif tag == 'CD':
         features['num_ratio'] += 1.0
-      elif tag == 'SYM' or tag == ':' or tag == '.':
+      elif tag == 'SYM' or match('[' + _SYMBOLS + ']+', word):
         features['sym_ratio'] += 1.0
-      elif tag == 'SYM' or tag == ':' or tag == '.' and tag in PUNCTUATION:
+      elif tag == 'SYM' or tag in _PUNCTUATION:
         features['punct_ratio'] += 1.0
 
     for tag in ['noun_ratio', 'adj_ratio', 'adv_ratio', 'verb_ratio', 'comp_ratio',
             'fw_ratio', 'sym_ratio', 'num_ratio', 'punct_ratio']:
         features[tag] = features[tag] / len(tokens) if len(tokens) else 0.0
 
-    return features
+    return features, tags
 
 
 """ Gets positive and negative ratio of sentences and words. Sentence ratio
@@ -189,20 +201,25 @@ def get_pos_stats(text):
     related ratio is calculated using the first meaning of the identified tag.
 
     Args:
-      text: the text to analyze polarity scores.
+      tags: list of pairs (word, tag). 
 
     Returns:
       Two real values, pos_ratio and neg_ratio, with, respectively the ratio of
     positive sentences and the ratio of negative sentences.
 """
-def get_sent_stats(text):
+def get_sent_stats(tags):
   features = {}
-  tblob = TextBlob(text)
+  negate = False
 
   swn = SimplifiedSentiWordNet()
-  features['pos_ratio'] = 0
-  features['neg_ratio'] = 0
-  for word, tag in tblob.tags:
+  features['pos_ratio'] = features['neg_ratio'] = w_count = 0.0
+  for word, tag in tags:
+    if tag == 'SYM' or tag in _PUNCTUATION:
+      negate = False
+      continue
+    if word in _NEGATION:
+      negate = True
+    w_count += 1.0
     if tag.startswith('NN'):
       tag = 'n'
     elif tag.startswith('JJ'):
@@ -215,15 +232,16 @@ def get_sent_stats(text):
       continue
     scores = swn.scores(word, tag)
     if scores:
+      if negate:
+        scores['pos_score'], scores['neg_score'] = scores['neg_score'], \
+            scores['pos_score']
       if scores['pos_score'] > scores['neg_score']:
         features['pos_ratio'] += 1
       elif scores['neg_score'] > scores['pos_score']:
         features['neg_ratio'] += 1
-  features['pos_ratio'] = features['pos_ratio'] / float(len(tblob.words)) if \
-      len(tblob.words) else 0.0
-  features['neg_ratio'] = features['neg_ratio'] / float(len(tblob.words)) if \
-      len(tblob.words) else 0.0
-  
+  features['pos_ratio'] = features['pos_ratio'] / w_count if w_count else 0 
+  features['neg_ratio'] = features['neg_ratio'] / w_count if w_count else 0
+    
   return features
 
 
@@ -310,26 +328,70 @@ def get_unigram_model(text):
   return unigram, len(text_blob.words)
 
 
-""" Models reviews in parallel using _NUM_THREADS threads.
+""" Extracts and models products from a set of reviews.
 
     Args:
+      reviews: A list of review dictionaries.
+
+    Returns:
+      A dictionary of products indexed by product name and containing a
+    dictionary with key 'avg_rating' as value.
+"""
+def model_products(reviews):
+  products = {}
+  for review in reviews:
+    product = review['product']
+    if product not in products:
+      products[product] = {}
+      products[product]['sum'] = products[product]['count'] = 0.0
+    products[product]['sum'] += review['rating']
+    products[product]['count'] += 1.0
+  for product in products:
+    products[product]['avg_rating'] = products[product]['sum'] / \
+        products[product]['count']
+  return products
+
+
+""" Calculates relative rating of reviews, which consists in the rating minus
+    the product average rating.
+
+    Args:
+      reviews: dictionary of reviews.
+
+    Returns:
+      None. Dictionary of reviews is changed in place with an additional key
+    'rel_rating' per review .
+"""
+def calculate_rel_rating(reviews):
+  products = model_products(reviews)
+  for review in reviews:
+    product = review['product']
+    review['rel_rating'] = review['rating'] - products[product]['avg_rating']
+
+
+""" Models reviews in parallel using num_threads threads.
+
+    Args:
+      num_threads: number of parallel jobs.
       sample_raw_reviews: (optional) The sample set of reviews to be modeled.
 
     Returns:
       A dictionary of reviews indexed by reviews' ids.
 """
-def model_reviews_parallel(sample_raw_reviews=None):
+def model_reviews_parallel(num_threads, sample_raw_reviews=None):
   raw_reviews = sample_raw_reviews if sample_raw_reviews else [r for r in
       parser.parse_reviews()]
 
-  pool = Pool(processes=_NUM_THREADS)
+  pool = Pool(processes=num_threads)
   result = pool.imap_unordered(model_review, iter(raw_reviews), len(raw_reviews)
-      / _NUM_THREADS + 1)
+      / num_threads + 1)
   pool.close()
   pool.join()
   result = [review for review in result if review]
   reviews = {review['id']:review for review in result}
 
   calculate_kl_divergence(reviews)
+  calculate_rel_rating(reviews)
 
   return reviews
+

@@ -20,6 +20,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
       scale_type: indicates the type of scale to adopt. It can be 'standard' to 
         scale with zero mean and unit standard deviation, or 'minmax' for range
         between 0 and 1.
+      data: list of arrays with instances to be scaled.
 
     Returns:
       A scaler that fits the data.

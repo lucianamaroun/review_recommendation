@@ -8,6 +8,7 @@
     on the project root directory.
 """
 
+
 from src import sampler
 from src import parser
 from src.review_modeling import model_reviews_parallel
@@ -16,11 +17,11 @@ from src.data_division import split_votes
 from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 
-_NUM_THREADS = 8
-_SAMPLE_RATIO = 0.5
+_NUM_THREADS = 1
+_SAMPLE = True
+_SAMPLE_RATIO = 0.001
 _TRAIN_FILE = '/var/tmp/luciana/train%d-foreign.csv' % int(_SAMPLE_RATIO * 100)
 _TEST_FILE = '/var/tmp/luciana/test%d-foreign.csv' % int(_SAMPLE_RATIO * 100)
-_SAMPLE = True
 
 
 """ Models reviews, users and votes in order to generate features from
@@ -40,9 +41,9 @@ def model():
   print 'Modeling reviews'
   if _SAMPLE:
     sel_reviews = sampler.sample_reviews(_SAMPLE_RATIO)
-    reviews = model_reviews_parallel(sel_reviews)
+    reviews = model_reviews_parallel(_NUM_THREADS, sel_reviews)
   else:
-    reviews = model_reviews_parallel()
+    reviews = model_reviews_parallel(_NUM_THREADS)
 
   print 'Split train and test'
   train, test = split_votes(reviews)
@@ -60,8 +61,7 @@ def model():
       train: a list of votes belonging to train set.
       test: the list of votes belonging to test set.
       reviews: a dictionary of reviews.
-      users: a dictionary of users with aggregated information from train
-    set.
+      users: a dictionary of users with aggregated information from train set.
       trusts: a networkx DiGraph object.
 
     Returns:
@@ -72,7 +72,7 @@ def output_model(train, test, reviews, users, trusts):
   test_f = open(_TEST_FILE, 'w')
 
   for out in [train_f, test_f]:
-    print >> out, ('review_id,reviewer_id,rater_id,rating,'
+    print >> out, ('review_id,reviewer_id,rater_id,rating,rel_rating,'
         'num_chars,num_tokens,num_words,num_sents,unique_ratio,avg_sent,'
         'cap_ratio,noun_ratio,adj_ratio,adv_ratio,verb_ratio,comp_ratio,'
         'fw_ratio,sym_ratio,num_ratio,punct_ratio,'
@@ -93,12 +93,12 @@ def output_model(train, test, reviews, users, trusts):
       rtr = users[vote['rater']]
       trust = 1 if vote['rater'] in trusts and r['user'] in \
           trusts[vote['rater']] else 0
-      print >> out, ('%s,%s,%s,%d,'
-          '%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,' 
+      print >> out, ('%s,%s,%s,%d,%f,'
+          '%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,' 
           '%d,%f,%f,%d,%d,%f,%f,%f,%f,%f,%f,'
           '%d,%f,%f,%d,%d,%f,%f,%f,%f,%f,%f,'
           '%d,%d') % (
-          r['id'], r['user'], vote['rater'], r['rating'],
+          r['id'], r['user'], vote['rater'], r['rating'], r['rel_rating'],
           r['num_chars'],r['num_tokens'],r['num_words'],r['num_sents'],
           r['uni_ratio'],r['avg_sent'],
           r['cap_sent'],

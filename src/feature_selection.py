@@ -10,8 +10,13 @@
 """
 
 
+from math import log
+
+from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import RFE
+
+from src.prediction import read
 
 
 _TRAIN_FILE = '/var/tmp/luciana/train20.csv'
@@ -21,8 +26,7 @@ _TEST_FILE = '/var/tmp/luciana/test20.csv'
 """ Ranks the features using a tree-based method.
 
     Args:
-      features: the list with the feature names, in the order they appear in
-    data.
+      features: a list with the feature names, in the order they appear in data.
       data: a list with numpy array represeting the instances.
       truth: a list with integers, ranging from 0 to 5, with the helpfulness
     votes for each vote instance.
@@ -42,8 +46,7 @@ def rank_features_tree(features, data, truth):
 """ Ranks the features using RFE (Recursive Feature Elimination) method.
 
     Args:
-      features: the list with the feature names, in the order they appear in
-    data.
+      features: a list with the feature names, in the order they appear in data.
       data: a list with numpy array represeting the instances.
       truth: a list with integers, ranging from 0 to 5, with the helpfulness
     votes for each vote instance.
@@ -97,8 +100,7 @@ def calculate_entropy(collection):
 """ Ranks the features using Information Gain method. 
 
     Args:
-      features: the list with the feature names, in the order they appear in
-    data.
+      features: a list with the feature names, in the order they appear in data.
       data: a list with numpy array represeting the instances.
       truth: a list with integers, ranging from 0 to 5, with the helpfulness
     votes for each vote instance.
@@ -116,7 +118,7 @@ def rank_features_infogain(features, data, truth):
         for v in value_prob}
     new_entropy = 0.0
     for value, prob in value_prob.items():
-      new_entropy += prob * entropy(partitions[value])
+      new_entropy += prob * calculate_entropy(partitions[value])
     info_gain.append(old_entropy - new_entropy)
   return sorted(features, key=lambda f: info_gain[features.index(f)],
       reverse=True)
@@ -127,6 +129,7 @@ def rank_features_infogain(features, data, truth):
     Elimination) in linear regression.
 
     Args:
+      features: a list with features names, in order as they appear in data.
       data: a list of instances, represented as numpy arrays continaing certain
     features.
       truth: a list of integers, from 0 to 5, containing the correct values for
@@ -148,7 +151,11 @@ def evaluate_features(features, data, truth):
     print '%d. %s' % (index, feature)
   print '-----------------------------'
 
-  return tree_ranking, rfe_ranking
+  print 'InfoGain Feature Evaluation'
+  ig_ranking = rank_features_infogain(features, data, truth)
+  for index, feature in enumerate(ig_ranking):
+    print '%d. %s' % (index, feature)
+  print '-----------------------------'
 
 
 if __name__ == '__main__':

@@ -27,7 +27,7 @@ from sys import argv
 
 from numpy import array
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.svm import SVC, SVR, LinearSVC
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.naive_bayes import GaussianNB
@@ -40,18 +40,20 @@ from src.scaling import scale_features
 _TRAIN_FILE = '/var/tmp/luciana/train20.csv'
 _TEST_FILE = '/var/tmp/luciana/test20.csv'
 _IDS_STOP = 3 # index + 1 where id features end
-_NP_STOP = 34 # index + 1 where non-personalized features end
-_FEAT_STOP = 46 # index + 1 where all the features end
+_NP_STOP = 36 # *************** CHANGE TO 34 # index + 1 where non-personalized features end
+_FEAT_STOP = 48 # ************* CHANGE TO 46 # index + 1 where all the features end
 _PREDICTORS = {'svm': SVC, 'lsvm': LinearSVC, 'svr': SVR,
     'rfr': RandomForestRegressor, 'rfc': RandomForestClassifier,
     'dtc': DecisionTreeClassifier, 'dtr': DecisionTreeRegressor,
-    'lr': LinearRegression, 'gnb': GaussianNB}
+    'lr': LinearRegression, 'rid': Ridge, 'gnb': GaussianNB}
 _Z = 1.959964 # 95% of confidence for IC with both sides
 
 
 """ Reads features and truth values from votes in a data file.
+
     Args:
       data_file: the string with the csv file with the data.
+
     Returns:
       Four values: a list with features' names; a list of numpy arrays with
     instances represented by non-personalized features; a list of numpy arrays
@@ -59,7 +61,7 @@ _Z = 1.959964 # 95% of confidence for IC with both sides
     a list with the truth class for the instances, integers from 0 to 5
     corresponding to helpfulness votes.
 """
-def read(data_file, selected_features=None):
+def read(data_file):
   data_np = []
   data_p = []
   ids = []
@@ -67,28 +69,23 @@ def read(data_file, selected_features=None):
   with open(data_file, 'r') as data:
     csv_reader = reader(data)
     features = csv_reader.next()[_IDS_STOP:_FEAT_STOP] # header
-    if selected_features:
-      selected_indices = set([i+3 for i in range(len(features)) if features[i] in
-          selected_features])
     for row in csv_reader:
       ids.append(row[:_IDS_STOP])
       data_np.append(array([float(f) for f in row[_IDS_STOP:_NP_STOP]]))
-      if selected_features:
-        data_p.append(array([float(row[i]) for i in range(len(row)) if i in
-            selected_indices]))
-      else:
-        data_p.append(array([float(f) for f in row[_IDS_STOP:_FEAT_STOP]]))
+      data_p.append(array([float(f) for f in row[_IDS_STOP:_FEAT_STOP]]))
       truth.append(int(row[_FEAT_STOP]))
   return features, ids, data_np, data_p, truth
 
 
 """ Trains a predictor.
+
     Args:
       train: a list of numpy arrays with the votes instances used as train.
       truth: a list of integers containing the truth values of votes, integers
     between 0 and 5.
       pred_code: a code for the predictor, used for indexing the dictionary
     _PREDICTORS.
+
     Returns:
       A scikit learn classifier object.
 """
@@ -190,13 +187,12 @@ def print_summary(scores_np, scores_p):
 def main(pred_code, scale, bias_code, rep):
   scores_np, scores_p = [], []
   
-  features, train_ids, train_np, train_p, train_truth = read(_TRAIN_FILE,
-      _SEL_FEAT)
-  _, test_ids, test_np, test_p, test_truth = read(_TEST_FILE, _SEL_FEAT)
+  features, train_ids, train_np, train_p, train_truth = read(_TRAIN_FILE)
+  _, test_ids, test_np, test_p, test_truth = read(_TEST_FILE)
 
   if scale:
-    train_np, test_np = scale_features(train_np, test_np)
-    train_p, test_p = scale_features(train_p, test_p)
+    train_np, test_np = scale_features(scale, train_np, test_np)
+    train_p, test_p = scale_features(scale, train_p, test_p)
   
   for _ in range(rep):
     if bias_code:
@@ -227,12 +223,12 @@ if __name__ == '__main__':
   bias_code = None
   rep = 1
   for i in range(1, len(argv), 2):
-    if argv[i] == 'p':
+    if argv[i] == '-p':
       pred = argv[i+1]
-    elif argv[i] == 's':
+    elif argv[i] == '-s':
       scale = argv[i+1]
-    elif argv[i] == 'b':
+    elif argv[i] == '-b':
       bias_code = argv[i+1]
-    elif argv[i] == 'i':
+    elif argv[i] == '-i':
       rep = int(argv[i+1])
   main(pred, scale, bias_code, rep)
