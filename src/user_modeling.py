@@ -40,6 +40,33 @@ def create_user(user_id):
   return user
 
 
+""" Creates a cold start user. 
+
+    Args:
+      user_id: the user id to create dictionary of.
+
+    Returns:
+      A dictionary with all features encoded as missing values. 
+"""
+def create_missing_user(user_id, trusts):
+  user = {}
+  user['id'] = user_id
+  user['num_reviews'] = 0
+  user['num_votes_rec'] = 0
+  user['num_votes_giv'] = 0
+  user['avg_rating'] = -1
+  user['sd_rating'] = -1
+  user['sd_help_rec'] = -1
+  user['sd_help_giv'] = -1
+  user['avg_rel_rating'] = -1
+  user['avg_help_rec'] = -1
+  user['avg_help_giv'] = -1
+  user['avg_rel_help_giv'] = -1
+  user['num_trustors'] = trusts.in_degree(user_id) if user_id in trusts else 0
+  user['num_trustees'] = trusts.out_degree(user_id) if user_id in trusts else 0
+  return user
+
+
 """ Adds user rating, updating related features.
 
     Args:
@@ -81,6 +108,8 @@ def add_user_vote(reviewer, voter, vote, avg_help):
 
 """ Finalizes user features, normalizing or aggregating features.
 
+    Observation: -1 encodes missing values.
+
     Args:
       user: a user dictionary.
 
@@ -89,23 +118,30 @@ def add_user_vote(reviewer, voter, vote, avg_help):
 """
 def finalize_user_features(users, trusts):
   prank = pagerank(trusts)
-  remove_users = set()
   for user in users:
-    if users[user]['num_reviews'] == 0 or users[user]['num_votes_rec'] == 0 \
-        or users[user]['num_votes_giv'] == 0:
-      remove_users.add(user) # removing cold starts
-      continue
-    users[user]['avg_rating'] /= float(users[user]['num_reviews'])
-    users[user]['avg_rel_rating'] /= float(users[user]['num_reviews'])
-    users[user]['sd_rating'] = std(users[user]['sd_rating'], ddof=1)
-    users[user]['avg_help_rec'] /= float(users[user]['num_votes_rec'])
-    users[user]['sd_help_rec'] = std(users[user]['sd_help_rec'], ddof=1)
-    users[user]['avg_help_giv'] /= float(users[user]['num_votes_giv'])
-    users[user]['avg_rel_help_giv'] /= float(users[user]['num_votes_giv'])
-    users[user]['sd_help_giv'] = std(users[user]['sd_help_giv'], ddof=1)
+    if users[user]['num_reviews'] == 0:
+      users[user]['avg_rating'] = -1 
+      users[user]['avg_rel_rating'] = -1 
+      users[user]['sd_rating'] = -1 
+    else:
+      users[user]['avg_rating'] /= float(users[user]['num_reviews'])
+      users[user]['avg_rel_rating'] /= float(users[user]['num_reviews'])
+      users[user]['sd_rating'] = std(users[user]['sd_rating'], ddof=1)
+    if users[user]['num_votes_rec'] == 0:
+      users[user]['avg_help_rec'] = -1 
+      users[user]['sd_help_rec'] = -1 
+    else:
+      users[user]['avg_help_rec'] /= float(users[user]['num_votes_rec'])
+      users[user]['sd_help_rec'] = std(users[user]['sd_help_rec'], ddof=1)
+    if users[user]['num_votes_giv'] == 0:
+      users[user]['avg_help_giv'] = -1 
+      users[user]['avg_rel_help_giv'] = -1 
+      users[user]['sd_help_giv'] = -1 
+    else:
+      users[user]['avg_help_giv'] /= float(users[user]['num_votes_giv'])
+      users[user]['avg_rel_help_giv'] /= float(users[user]['num_votes_giv'])
+      users[user]['sd_help_giv'] = std(users[user]['sd_help_giv'], ddof=1)
     users[user]['pagerank'] = prank[user] if user in prank else 0.0
-  for user in remove_users:
-    users.pop(user, None)
 
 
 """ Groups votes by review.
@@ -158,6 +194,8 @@ def model_users(reviews, train, trusts):
       add_user_vote(users[review['user']], users[vote['voter']], vote['vote'],
           avg_help)
   for user in trusts:
+    if user not in users:
+      continue
     users[user]['num_trustors'] = trusts.in_degree(user)
     users[user]['num_trustees'] = trusts.out_degree(user)
   finalize_user_features(users, trusts)
