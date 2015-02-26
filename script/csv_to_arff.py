@@ -12,8 +12,8 @@
 import csv
 
 
-_INS = ['/var/tmp/luciana/train1.csv', '/var/tmp/luciana/test1.csv']
-_OUTS = ['/var/tmp/luciana/train1.arff', '/var/tmp/luciana/test1.arff']
+_INS = ['/var/tmp/luciana/train20.csv', '/var/tmp/luciana/test20.csv']
+_OUTS = ['/var/tmp/luciana/train20.arff', '/var/tmp/luciana/test20.arff']
 
 for i in [0, 1]:
   with open(_INS[i], 'r') as data:

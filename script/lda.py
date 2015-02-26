@@ -10,17 +10,20 @@
     on the root directory of the project.
 """
 
+
 from nltk.corpus import stopwords
 from nltk.tokenize import RegexpTokenizer
 from nltk.stem import SnowballStemmer
 from gensim import corpora, models
 from math import log, floor
+from textblob import TextBlob
 
 from src import parser
 
-_N_REVIEWS = 30454
+
+_N_REVIEWS = float('inf') # 30454
 _N_TOPICS = 5
-_IDF_QUANTILE = 0.001
+_IDF_QUANTILE = 0.000
 
 
 """ Extracts words from text, ignoring pucntuation.
@@ -118,7 +121,15 @@ def compute_idfs(documents):
 if __name__ == '__main__':
   count = 0
   documents = []
+  category = None
   for r in parser.parse_reviews():
+    #if not category:
+    #  category = r['category']
+    #  print 'Category: ' + category
+    #if r['category'] == category:
+    #tblob = TextBlob(r['text'])
+    #for sentence in tblob.sentences:
+    #  documents.append(str(sentence))
     documents.append(r['text'])
     count += 1
     if count >= _N_REVIEWS:
