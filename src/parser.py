@@ -6,6 +6,7 @@
     This module is used by other modules and should not be directly called.
 """
 
+
 from networkx import DiGraph
 
 
@@ -115,6 +116,8 @@ def parse_votes(raw_votes):
         break
       user, help_vote = vote.split(':')
       help_vote = int(help_vote)
+      if help_vote < 0 or help_vote > 5:
+        raise Exception()
       if user not in votes:
         # avoid duplication: seems that when there is a also a comment, the vote is duplicated
         votes[user] = help_vote

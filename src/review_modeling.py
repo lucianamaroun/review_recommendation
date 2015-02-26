@@ -191,9 +191,9 @@ def get_pos_stats(tags):
 
     for tag in ['noun_ratio', 'adj_ratio', 'adv_ratio', 'verb_ratio', 'comp_ratio',
             'fw_ratio', 'sym_ratio', 'num_ratio', 'punct_ratio']:
-        features[tag] = features[tag] / len(tokens) if len(tokens) else 0.0
+        features[tag] = features[tag] / len(tags) if len(tags) else 0.0
 
-    return features, tags
+    return features
 
 
 """ Gets positive and negative ratio of sentences and words. Sentence ratio
@@ -339,7 +339,7 @@ def get_unigram_model(text):
 """
 def model_products(reviews):
   products = {}
-  for review in reviews:
+  for review in reviews.values():
     product = review['product']
     if product not in products:
       products[product] = {}
@@ -364,9 +364,10 @@ def model_products(reviews):
 """
 def calculate_rel_rating(reviews):
   products = model_products(reviews)
-  for review in reviews:
-    product = review['product']
-    review['rel_rating'] = review['rating'] - products[product]['avg_rating']
+  for review_id in reviews:
+    product = reviews[review_id]['product']
+    reviews[review_id]['rel_rating'] = reviews[review_id]['rating'] - \
+        products[product]['avg_rating']
 
 
 """ Models reviews in parallel using num_threads threads.

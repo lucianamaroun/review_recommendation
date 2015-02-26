@@ -13,7 +13,7 @@ from math import ceil
 from datetime import datetime
 
 
-""" Models votes with basic identification data (review id, reviewer id, rater
+""" Models votes with basic identification data (review id, reviewer id, voter 
     id), the vote value and the date of the review (used as an approximation for
     the vote date).
 
@@ -27,12 +27,12 @@ def model_votes(reviews):
   votes = []
 
   for review in reviews.values():
-    for rater in review['votes']:
+    for voter in review['votes']:
       vote = {}
       vote['review'] = review['id']
       vote['reviewer'] = review['user']
-      vote['rater'] = rater
-      vote['vote'] = review['votes'][rater]
+      vote['voter'] = voter 
+      vote['vote'] = review['votes'][voter]
       vote['date'] = review['date']
       votes.append(vote)
 

@@ -5,7 +5,7 @@
     time.
 
     Usage:
-      $ python -m src.rep_feature_removal -p <predictor> [-b <bias_code>]
+      $ python -m src.repeated_feature_deletion -p <predictor> [-b <bias_code>]
         [-s <scaling_type>] -r <ranking_method>
     on root directory of the project. In this command,
       (*) <predictor> is a code for the predictor; one in the set of keys of
@@ -23,16 +23,21 @@
 
 from sys import argv
 
+from numpy import array
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVC, SVR, LinearSVC
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.naive_bayes import GaussianNB
 
+from src.prediction import read, train, test
+from src.prediction_evaluation import calculate_rmse
 from src.feature_selection import rank_features_tree, rank_features_rfe, \
     rank_features_infogain
 
 
+_TRAIN_FILE = '/var/tmp/luciana/train20.csv'
+_TEST_FILE = '/var/tmp/luciana/test20.csv'
 _PREDICTORS = {'svm': SVC, 'lsvm': LinearSVC, 'svr': SVR,
     'rfr': RandomForestRegressor, 'rfc': RandomForestClassifier,
     'dtc': DecisionTreeClassifier, 'dtr': DecisionTreeRegressor,
@@ -55,16 +60,16 @@ _RANK_METHODS = {'tree': rank_features_tree, 'rfe': rank_features_rfe,
       None. The score for each feature removal step is output to stdout.
 """
 def repeatedly_remove(pred_code, scale, bias_code, rank_type):
-  features, train_ids, _, train, train_truth = read(_TRAIN_FILE)
-  _, test_ids, _, test, test_truth = read(_TEST_FILE)
+  features, train_ids, _, train_set, train_truth = read(_TRAIN_FILE)
+  _, test_ids, _, test_set, test_truth = read(_TEST_FILE)
   
   if scale:
-    train, test = scale_features(train, test)
+    train_set, test_set = scale_features(train, test)
   
-  cur_features = features[:] + 'dummy' # dummy to remove none at first
-  cur_train, cur_test = train, test
-  feat_ranking = _RANK_METHODS[rank_type](features, train + test, train_truth +
-      test_truth)
+  cur_features = features[:] + ['dummy'] # dummy to remove none at first
+  cur_train, cur_test = train_set, test_set
+  feat_ranking = _RANK_METHODS[rank_type](features, train_set + test_set, 
+      train_truth + test_truth)
   feat_ranking.append('dummy')
 
   for removal_feature in reversed(feat_ranking[1:]):
@@ -76,15 +81,14 @@ def repeatedly_remove(pred_code, scale, bias_code, rank_type):
         instance.tolist()[removal_index+1:]) for instance in cur_test]
     if bias_code:
       bias, bias_train_truth = remove_bias(train_ids, train_truth, bias_code)
-      pred = train(train, bias_train_truth, pred_code)
+      pred = train(cur_train, bias_train_truth, pred_code)
     else:
-      pred = train(train, train_truth, pred_code)
-    res = test(test, pred)
+      pred = train(cur_train, train_truth, pred_code)
+    res = test(cur_test, pred)
     if bias_code:
       res = adjust_bias(bias, test_ids, res, bias_code)
-
-    rmse_p = calculate_rmse(res_p, test_truth)
-    print 'TOP %d: %f' % (len(cur_features), rmse_p)
+    rmse = calculate_rmse(res, test_truth)
+    print 'TOP %d: %f' % (len(cur_features), rmse)
 
 
 if __name__ == '__main__':
@@ -100,5 +104,5 @@ if __name__ == '__main__':
     elif argv[i] == '-b':
       bias_code = argv[i+1]
     elif argv[i] == '-r':
-      rep = int(argv[i+1])
+      rank_type = argv[i+1]
   repeatedly_remove(pred, scale, bias_code, rank_type)

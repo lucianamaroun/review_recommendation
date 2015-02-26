@@ -25,12 +25,13 @@ from csv import reader
 from math import sqrt
 from sys import argv
 
-from numpy import array
+from numpy import array, std
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.svm import SVC, SVR, LinearSVC
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.naive_bayes import GaussianNB
+from sklearn.preprocessing import Imputer
 
 from src.prediction_evaluation import calculate_rmse
 from src.bias_correction import remove_bias, adjust_bias
@@ -90,7 +91,7 @@ def read(data_file):
       A scikit learn classifier object.
 """
 def train(train, truth, pred_code):
-  if pred_code == 'SVR' or pred_code == 'SVM':
+  if pred_code == 'svr' or pred_code == 'svm':
     pred = _PREDICTORS[pred_code](cache_size=2000)
   else:
     pred = _PREDICTORS[pred_code]()
@@ -154,6 +155,7 @@ def compare(res_np, res_p, test_truth):
 def print_summary(scores_np, scores_p):
     print '*******************'
     print 'SUMMARY'
+    print ''
     mean_np = sum(scores_np) / len(scores_np)
     std_np = std(scores_np, ddof=1)
     width_np = _Z * std_np / sqrt(rep)
@@ -170,6 +172,21 @@ def print_summary(scores_np, scores_p):
     print 'Empiric SD of RMSE: %f' % std_p
     print 'IC of 95%%: (%f, %f)' % (mean_p - width_p, mean_p + width_p)
     print '*******************'
+
+
+""" Imputes missing values on test with means from train.
+
+    Args:
+      train_set: list of instances from the train.
+      test_set: list of instances from the test.
+
+    Returns:
+      A new test with missing values imputed.
+"""
+def impute_missing(train_set, test_set):
+  imputer = Imputer(missing_values=-1, strategy='mean')
+  imputer.fit(train_set)
+  return imputer.transform(test_set)
 
 
 """ Main function of prediction module. Performs feature evaluation and
@@ -202,6 +219,9 @@ def main(pred_code, scale, bias_code, rep):
     else:
       pred_np = train(train_np, train_truth, pred_code)
       pred_p = train(train_p, train_truth, pred_code)
+
+    test_np = impute_missing(train_np, test_np)
+    test_p = impute_missing(train_p, test_p)
 
     res_np, res_p = test(test_np, pred_np), test(test_p, pred_p)
 
