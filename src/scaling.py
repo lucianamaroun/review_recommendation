@@ -42,9 +42,10 @@ def fit_scaler(scale_type, data):
     Returns:
       A pair with scaled train and test sets. 
 """
-def scale_features(scale_type, train, test):
+def scale_features(scale_type, train, test=None):
   scaler = fit_scaler(scale_type, train)
   train = scaler.transform(train)
-  test = scaler.transform(test)
+  if test:
+    test = scaler.transform(test)
   return train, test
 

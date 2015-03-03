@@ -166,3 +166,8 @@ def parse_trusts():
     trust.add_edge(l[0], l[1])
   f.close()
   return trust
+
+
+if __name__ == '__main__':
+  for _ in parse_reviews(verbose=True):
+    pass

@@ -17,10 +17,12 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import RFE
 
 from src.prediction import read
+from src.scaling import scale_features
 
 
 _TRAIN_FILE = '/var/tmp/luciana/train20.csv'
 _TEST_FILE = '/var/tmp/luciana/test20.csv'
+_IG_FILE = 'out/ig20.dat'
 
 
 """ Ranks the features using a tree-based method.
@@ -57,6 +59,7 @@ def rank_features_tree(features, data, truth):
 def rank_features_rfe(features, data, truth):
   pred = LinearRegression()
   rfe = RFE(estimator=pred, n_features_to_select=1, step=1)
+  data, _ = scale_features('standard', data)
   rfe.fit(data, truth)
   importances = rfe.ranking_ # the lower the better
   ranking = sorted(features, key=lambda x: importances[features.index(x)])
@@ -109,19 +112,23 @@ def calculate_entropy(collection):
       A list with feature names sorted by importance.
 """
 def rank_features_infogain(features, data, truth):
-  info_gain = []
-  size = len(truth)
-  old_entropy = calculate_entropy(truth)
-  for index in range(len(data[0])):
-    value_prob = get_probability_distribution([inst[index] for inst in data])
-    partitions = {v: [truth[i] for i in range(size) if data[i][index] == v]
-        for v in value_prob}
-    new_entropy = 0.0
-    for value, prob in value_prob.items():
-      new_entropy += prob * calculate_entropy(partitions[value])
-    info_gain.append(old_entropy - new_entropy)
-  return sorted(features, key=lambda f: info_gain[features.index(f)],
-      reverse=True)
+  reader = open(_IG_FILE, 'r')
+  ranking = [line.strip() for line in reader]
+  return ranking 
+
+#  info_gain = []
+#  size = len(truth)
+#  old_entropy = calculate_entropy(truth)
+#  for index in range(len(data[0])):
+#    value_prob = get_probability_distribution([inst[index] for inst in data])
+#    partitions = {v: [truth[i] for i in range(size) if data[i][index] == v]
+#        for v in value_prob}
+#    new_entropy = 0.0
+#    for value, prob in value_prob.items():
+#      new_entropy += prob * calculate_entropy(partitions[value])
+#    info_gain.append(old_entropy - new_entropy)
+#  return sorted(features, key=lambda f: info_gain[features.index(f)],
+#      reverse=True)
 
 
 """ Evaluate non-personalized and personalized features using two methods: a
@@ -139,11 +146,11 @@ def rank_features_infogain(features, data, truth):
       None. The results are output to stdout.
 """
 def evaluate_features(features, data, truth):
-  print 'Tree-based Feature Evaluation'
-  tree_ranking = rank_features_tree(features, data, truth)
-  for index, feature in enumerate(tree_ranking):
-    print '%d. %s' % (index, feature)
-  print '-----------------------------'
+#  print 'Tree-based Feature Evaluation'
+#  tree_ranking = rank_features_tree(features, data, truth)
+#  for index, feature in enumerate(tree_ranking):
+#    print '%d. %s' % (index, feature)
+#  print '-----------------------------'
 
   print 'RFE Feature Evaluation'
   rfe_ranking = rank_features_rfe(features, data, truth)

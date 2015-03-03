@@ -34,6 +34,7 @@ from src.prediction import read, train, test
 from src.prediction_evaluation import calculate_rmse
 from src.feature_selection import rank_features_tree, rank_features_rfe, \
     rank_features_infogain
+from src.bias_correction import remove_bias, adjust_bias
 
 
 _TRAIN_FILE = '/var/tmp/luciana/train20.csv'

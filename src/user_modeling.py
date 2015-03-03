@@ -49,6 +49,7 @@ def create_user(user_id):
       A dictionary with all features encoded as missing values. 
 """
 def create_missing_user(user_id, trusts):
+  prank = pagerank(trusts)
   user = {}
   user['id'] = user_id
   user['num_reviews'] = 0
@@ -64,6 +65,7 @@ def create_missing_user(user_id, trusts):
   user['avg_rel_help_giv'] = -1
   user['num_trustors'] = trusts.in_degree(user_id) if user_id in trusts else 0
   user['num_trustees'] = trusts.out_degree(user_id) if user_id in trusts else 0
+  user['pagerank'] = prank[user_id] if user_id in prank else -1.0 
   return user
 
 
@@ -141,7 +143,7 @@ def finalize_user_features(users, trusts):
       users[user]['avg_help_giv'] /= float(users[user]['num_votes_giv'])
       users[user]['avg_rel_help_giv'] /= float(users[user]['num_votes_giv'])
       users[user]['sd_help_giv'] = std(users[user]['sd_help_giv'], ddof=1)
-    users[user]['pagerank'] = prank[user] if user in prank else 0.0
+    users[user]['pagerank'] = prank[user] if user in prank else -1.0
 
 
 """ Groups votes by review.

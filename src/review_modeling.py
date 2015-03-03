@@ -94,16 +94,16 @@ def get_foreign_ratio(text):
     list of feature names.
 """
 def get_textual_features(text):
-    for sub, target in _SUBSTITUTE.items():
-      text = text.replace(sub, target)
     lower_text = text.lower()
+    for sub, target in _SUBSTITUTE.items():
+      lower_text = lower_text.replace(sub, target)
 
     features = {}
     length_feat = get_text_length_stats(text)
     for feat in length_feat:
         features[feat] = length_feat[feat]
 
-    tokens = word_tokenize(text)
+    tokens = word_tokenize(lower_text)
     tags = pos_tag(tokens)
     pos_feat = get_pos_stats(tags)
     for feat in pos_feat:
