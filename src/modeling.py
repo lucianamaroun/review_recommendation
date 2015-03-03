@@ -17,7 +17,7 @@ from src.data_division import split_votes
 from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 
-_NUM_THREADS = 1
+_NUM_THREADS = 4
 _SAMPLE = True
 _SAMPLE_RATIO = 0.01
 _TRAIN_FILE = '/var/tmp/luciana/train%d-foreign.csv' % int(_SAMPLE_RATIO * 100)
@@ -88,9 +88,9 @@ def output_model(train, test, reviews, users, trusts):
     for vote in partition:
       r = reviews[vote['review']]
       rvr = users[r['user']] if r['user'] in users else \
-          missing_user(r['user'], trusts)
+          create_missing_user(r['user'], trusts)
       rtr = users[vote['voter']] if vote['voter'] in users else \
-          missing_user(vote['voter'], trusts)
+          create_missing_user(vote['voter'], trusts)
       trust = 1 if vote['voter'] in trusts and r['user'] in \
           trusts[vote['voter']] else 0
       print >> out, ('%s,%s,%s,%d,%f,'
