@@ -9,7 +9,7 @@
 """
 
 
-from numpy import std
+from numpy import std, mean
 from networkx import pagerank
 
 
@@ -146,6 +146,42 @@ def finalize_user_features(users, trusts):
     users[user]['pagerank'] = prank[user] if user in prank else -1.0
 
 
+""" Calculates aggregated features from immediate social network of user.
+
+    Args:
+      users: dictionary of users.
+      trusts: nx.Digraph object with trust network.
+
+    Returns:
+      None. Changes are made in users dictionary.
+"""
+def calculate_network_agg_features(users, trusts):
+  for u_id in users:
+    direct_net = trusts.predecessors(u_id) + trusts.successors(u_id)
+    trust_net = trusts.successors(u_id)
+    u['avg_rating_dir_net'] = mean([n['avg_rating'] for n in direct_net])
+    u['avg_vote_giv_tru_net'] = mean([n['avg_help_giv'] for n in trust_net])
+
+
+""" Calculates features related to statistics of user in the trust network.
+
+    Args:
+      users: dictionary of users.
+      trusts: nx.Digraph object with trust network.
+
+    Returns:
+      None. Changes are made in users dictionary.
+"""
+def calculate_trust_features(users, trusts):
+  for user in trusts:
+    if user not in users:
+      users[user]['num_trustors'] = 0
+      users[user]['num_trustees'] = 0
+      continue
+    users[user]['num_trustors'] = trusts.in_degree(user)
+    users[user]['num_trustees'] = trusts.out_degree(user)
+
+
 """ Groups votes by review.
 
     Args:
@@ -195,11 +231,8 @@ def model_users(reviews, train, trusts):
         users[vote['voter']] = rat_dict
       add_user_vote(users[review['user']], users[vote['voter']], vote['vote'],
           avg_help)
-  for user in trusts:
-    if user not in users:
-      continue
-    users[user]['num_trustors'] = trusts.in_degree(user)
-    users[user]['num_trustees'] = trusts.out_degree(user)
+  calculate_trust_features(users, trusts)
   finalize_user_features(users, trusts)
+  calculate_network_agg_features(users, trusts)
 
   return users
