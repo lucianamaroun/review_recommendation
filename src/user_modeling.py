@@ -202,6 +202,52 @@ def group_votes_by_review(votes):
   return grouped_votes
 
 
+""" Calculates aggregated features related to similar users.
+    
+    Args:
+      users: dictionary of users.
+      similar: dictionary of similar users.
+
+    Returns:
+      None. Changes are made in users dictionary.
+"""
+def calculate_similar_agg_features(users, similar):
+  for user in similar:
+    users[user]['avg_rating_sim'] = np.mean([users[s]['avg_rating'] for u in
+        similar[user]])
+    users[user]['avg_help_giv_sim'] = np.mean([users[s]['avg_help_giv'] for u in
+        similar[user]])
+
+
+""" Gets similar users for each user. A user B is amongst user A similar users
+    if their cosine rating similarity is higher than the average similarity of
+    A with all the users.
+
+    Args:
+      users: a dictionary of users, containing user ids as keys and user
+        dictionaries as values.
+
+    Returns:
+      A dictionary of similar users indexed by user ids and having a list of
+    similar user ids as value.
+"""
+def get_similar_users(users):
+  sim = {}
+  for user in users:
+    sim[user] = {}
+  for user_a in users.keys():
+    a_ratings = users[user_a]['ratings']
+    for user_b in [u for u in users.keys() if u > user_a]:
+      b_ratings = users[user_b]['ratings']
+      vec_a, vec_b = obtain_vectors(a_ratings, b_ratings)
+      sim[user_a][user_b] = sim[user_b][user_a] = 1 - cosine(vec_a, vec_b)
+  sim_users = {}
+  for user in sim:
+    avg = np.mean(sim[user].values())
+    sim_users[user] = [u for u in sim[user] if sim[user][u] > avg]
+  return sim_users
+  
+
 """ Models users, aggregating information from reviews and trust relations.
 
     Args:
@@ -234,5 +280,7 @@ def model_users(reviews, train, trusts):
   calculate_trust_features(users, trusts)
   finalize_user_features(users, trusts)
   calculate_network_agg_features(users, trusts)
+  similar = get_similar_users(users)
+  calculate_similar_agg_features(users, similar)
 
   return users
