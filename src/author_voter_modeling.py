@@ -23,8 +23,8 @@ _BETA = 0.005
 """ Computes jaccard similarity between two sets.
 
     Args:
-      set_a: first set of values.
-      set_b: second set of values.
+      set_a: first set of values (type has to be set).
+      set_b: second set of values (type has to be set).
 
     Returns:
       A real value with the jaccard similarity coefficient.
@@ -119,8 +119,8 @@ def obtain_vectors(dict_a, dict_b):
   vec_a = np.zeros(len(dimensions))
   vec_b = np.zeros(len(dimensions))
   for dim_index, dim_name in enumerate(dimensions):
-    vec_a[dim_index] = dict_a[dim_name] if dim_name in dict_a else 0.0
-    vec_b[dim_index] = dict_b[dim_name] if dim_name in dict_b else 0.0
+    vec_a[dim_index] = dict_a[dim_name] if dim_name in dict_a else 0
+    vec_b[dim_index] = dict_b[dim_name] if dim_name in dict_b else 0
   return vec_a, vec_b
 
 
@@ -136,15 +136,19 @@ def obtain_vectors(dict_a, dict_b):
 """
 def calculate_authoring_similarity(author, voter):
   features = {}
-  author_rated = set(author['ratings'].keys()), set(voter['ratings'].keys())
-  author_ratings, voter_ratings = obtain_vectors(dict_a, dict_b)
+  author_rated = set(author['ratings'].keys())
+  voter_rated = set(voter['ratings'].keys())
+  author_ratings, voter_ratings = obtain_vectors(author['ratings'],
+      voter['ratings'])
   features['common_rated'] = len(author_rated.intersection(voter_rated))
   features['jacc_rated'] = jaccard(author_rated, voter_rated)
   features['cos_ratings'] = 1 - cosine(author_ratings, voter_ratings)
-  features['pear_ratings'] = pearsonr(author_ratings, voter_ratings)
+  features['pear_ratings'] = pearsonr(author_ratings, voter_ratings)[0]
   features['diff_avg_ratings'] = author['avg_rating'] - voter['avg_rating']
-  features['diff_max_ratings'] = max(author_ratings) - max(voter_ratings)
-  features['diff_min_ratings'] = min(author_ratings) - min(voter_ratings) 
+  features['diff_max_ratings'] = max(author['ratings'].values()) - \
+      max(voter['ratings'].values())
+  features['diff_min_ratings'] = min(author['ratings'].values()) - \
+      min(voter['ratings'].values()) 
   return features
 
 
@@ -160,13 +164,15 @@ def calculate_authoring_similarity(author, voter):
 """
 def calculate_connection_strength(author, voter, trusts):
   features = {}
+  a_id, v_id = author['id'], voter['id']
   author_trustees = set(trusts.successors(author['id']))
   voter_trustees = set(trusts.successors(voter['id']))
   author_trustors = set(trusts.predecessors(author['id']))
   voter_trustors = set(trusts.predecessors(voter['id']))
   features['jacc_trustees'] = jaccard(author_trustees, voter_trustees)
   features['jacc_trustors'] = jaccard(author_trustors, voter_trustors)
-  features['adamic_adar_trustees'] = adamic_adar_trustees(trusts, author, voter)
-  features['adamic_adar_trustors'] = adamic_adar_trustors(trusts, author, voter)
-  features['katz'] = katz(trusts, author, voter)
+  features['adamic_adar_trustees'] = adamic_adar_trustees(trusts, a_id, v_id)
+  features['adamic_adar_trustors'] = adamic_adar_trustors(trusts, a_id, v_id)
+  features['katz'] = katz(trusts, a_id, v_id)
+  return features
 
