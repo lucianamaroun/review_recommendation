@@ -1,4 +1,5 @@
 data/*
+plot/*
 old*
 out*
 \.DS_Store*
