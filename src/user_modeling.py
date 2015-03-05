@@ -11,7 +11,9 @@
 
 from numpy import std, mean
 from networkx import pagerank
+from scipy.spatial.distance import cosine
 
+from src.author_voter_modeling import obtain_vectors # put in a specialized module
 
 """ Initializes user features.
 
@@ -213,9 +215,9 @@ def group_votes_by_review(votes):
 """
 def calculate_similar_agg_features(users, similar):
   for user in similar:
-    users[user]['avg_rating_sim'] = np.mean([users[s]['avg_rating'] for u in
+    users[user]['avg_rating_sim'] = mean([users[s]['avg_rating'] for s in
         similar[user]])
-    users[user]['avg_help_giv_sim'] = np.mean([users[s]['avg_help_giv'] for u in
+    users[user]['avg_help_giv_sim'] = mean([users[s]['avg_help_giv'] for s in
         similar[user]])
 
 
@@ -243,7 +245,7 @@ def get_similar_users(users):
       sim[user_a][user_b] = sim[user_b][user_a] = 1 - cosine(vec_a, vec_b)
   sim_users = {}
   for user in sim:
-    avg = np.mean(sim[user].values())
+    avg = mean(sim[user].values())
     sim_users[user] = [u for u in sim[user] if sim[user][u] > avg]
   return sim_users
   
@@ -284,3 +286,4 @@ def model_users(reviews, train, trusts):
   calculate_similar_agg_features(users, similar)
 
   return users
+
