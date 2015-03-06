@@ -3,8 +3,8 @@ import unittest
 import src.user_modeling as umod
 
 
-class SimpleTestCase(unittest.TestCase):
-
+class SimilarTestCase(unittest.TestCase):
+  """ Test case of similar users calculation and derived features. """
   def setUp(self):
     self.users = {
       1: {'id': 1, 'ratings': {1: 1, 2: 2, 4: 5, 5: 2}, 'avg_rating': 2.5, 

@@ -7,6 +7,7 @@ import networkx as nx
 import src.author_voter_modeling as av
 
 class IsolatedJaccardTestCase(unittest.TestCase):
+""" Test case for jaccard coefficient calculation between two sets. """
 
   def setUp(self):
     self.set_a = set([1, 3, 4, 6])
@@ -20,7 +21,8 @@ class IsolatedJaccardTestCase(unittest.TestCase):
 
 
 class IsolatedVectorsTestCase(unittest.TestCase):
-
+""" Test case for obtaining vectors from dictionaries. Each key indicates a new
+    dimension and an undefined one receives value 0. """
   def setUp(self):
     self.dict_a = {1: 1, 2: 2, 3: 4}
     self.dict_b = {0: -1, 2: 3, 4: 2}
@@ -34,7 +36,8 @@ class IsolatedVectorsTestCase(unittest.TestCase):
 
 
 class SimpleTestCase(unittest.TestCase):
-
+""" Simple test case of author and voter, with all dependant functions
+    considered. """
   def setUp(self):
     self.graph = nx.DiGraph()
     self.graph.add_edges_from([(3, 1), (4, 1), (1, 5), (1, 6), (1, 7), (2, 6),
