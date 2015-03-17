@@ -176,3 +176,48 @@ def calculate_connection_strength(author, voter, trusts):
   features['katz'] = katz(trusts, a_id, v_id)
   return features
 
+
+""" Models users similarities using votes in the training set. 
+
+    Args:
+      train: list of votes in the training set.
+      users: dictionary of user models.
+
+    Returns:
+      A dictionary of similarity features indexed by a pair of user ids.
+"""
+def model_author_voter_similarity(train, users):
+  sim_features = {}
+  for vote in train:
+    author_id = vote['reviewer']
+    voter_id = vote['voter']
+    if (voter_id, author_id) in sim_features or author_id not in \
+        similar[voter_id]:
+      continue
+    sim_features[(voter_id, author_id)] = \
+        calculate_authoring_similarity(users[author_id], users[voter_id])
+  return sim_features
+
+
+""" Models users connection strength using votes in the training set. 
+
+    Args:
+      train: list of votes in the training set.
+      users: dictionary of user models.
+
+    Returns:
+      A dictionary of connection features indexed by a pair of user ids.
+"""
+def model_author_voter_connection(train, users, trusts):
+  conn_features = {}
+  for vote in train:
+    author_id = vote['reviewer']
+    voter_id = vote['voter']
+    if (voter_id, author_id) in conn_features or author_id not in \
+      trusts[voter_id]:
+      continue
+    conn_features[(voter_id, author_id)] = \
+        calculate_connection_strength(users[author_id], users[voter_id], trusts)
+
+  return conn_features
+

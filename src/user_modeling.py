@@ -39,6 +39,10 @@ def create_user(user_id):
   user['avg_rel_help_giv'] = 0
   user['num_trustees'] = 0
   user['num_trustors'] = 0
+  user['avg_rating_sim'] = 0
+  user['avg_help_giv_sim'] = 0
+  user['avg_rating_dir_net'] = 0 
+  user['avg_help_giv_tru_net'] = 0
   return user
 
 
@@ -162,7 +166,7 @@ def calculate_network_agg_features(users, trusts):
     direct_net = trusts.predecessors(u_id) + trusts.successors(u_id)
     trust_net = trusts.successors(u_id)
     u['avg_rating_dir_net'] = mean([n['avg_rating'] for n in direct_net])
-    u['avg_vote_giv_tru_net'] = mean([n['avg_help_giv'] for n in trust_net])
+    u['avg_help_giv_tru_net'] = mean([n['avg_help_giv'] for n in trust_net])
 
 
 """ Calculates features related to statistics of user in the trust network.

@@ -32,7 +32,7 @@ _TEST_FILE = '/var/tmp/luciana/test%d-foreign.csv' % int(_SAMPLE_RATIO * 100)
       None.
 
     Returns:
-      None. Calls output_model which outputs to files.
+      Reviews, users, trusts dictionaries and train and test. 
 """
 def model():
   print 'Getting trust'
@@ -53,6 +53,8 @@ def model():
 
   print 'Outputting'
   output_model(train, test, reviews, users, trusts)
+
+  return reviews, users, trusts, train, test
 
 
 """ Outputs feature model.
@@ -79,11 +81,14 @@ def output_model(train, test, reviews, users, trusts):
         'pos_ratio,neg_ratio,kl_div,'
         'r_num_reviews,r_avg_rating,r_avg_rel_rating,r_avg_help_rec,'
         'r_num_trustors,r_num_trustees,r_avg_help_giv,r_avg_rel_help_giv,'
-        'r_sd_rating,r_sd_help_rec,r_sd_help_giv,r_pagerank,'
+        'r_sd_rating,r_sd_help_rec,r_sd_help_giv,r_pagerank,r_avg_rating_sim,'
+        'r_avg_help_giv_sim,r_avg_rating_dir_net,r_avg_help_giv_tru_net,'
         'u_num_reviews,u_avg_rating,u_avg_rel_rating,u_avg_help_rec,'
         'u_num_trustors,u_num_trustees,u_avg_help_giv,u_avg_rel_help_giv,'
-        'u_sd_rating,u_sd_help_rec,u_sd_help_giv,u_pagerank,trust,truth')
-
+        'u_sd_rating,u_sd_help_rec,u_sd_help_giv,u_pagerank,u_avg_rating_sim,'
+        'u_avg_help_giv_sim,u_avg_rating_dir_net,u_avg_help_giv_tru_net,'
+        'trust,truth')
+  
   for partition, out in [(train, train_f), (test, test_f)]:
     for vote in partition:
       r = reviews[vote['review']]
@@ -95,8 +100,8 @@ def output_model(train, test, reviews, users, trusts):
           trusts[vote['voter']] else 0
       print >> out, ('%s,%s,%s,%d,%f,'
           '%d,%d,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,' 
-          '%d,%f,%f,%f,%d,%d,%f,%f,%f,%f,%f,%f,'
-          '%d,%f,%f,%f,%d,%d,%f,%f,%f,%f,%f,%f,'
+          '%d,%f,%f,%f,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,'
+          '%d,%f,%f,%f,%d,%d,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,'
           '%d,%d') % (
           r['id'], r['user'], vote['voter'], r['rating'], r['rel_rating'],
           r['num_chars'],r['num_tokens'],r['num_words'],r['num_sents'],
@@ -110,10 +115,14 @@ def output_model(train, test, reviews, users, trusts):
           rvr['avg_help_rec'],rvr['num_trustors'],rvr['num_trustees'],
           rvr['avg_help_giv'],rvr['avg_rel_help_giv'],rvr['sd_rating'],
           rvr['sd_help_rec'],rvr['sd_help_giv'],rvr['pagerank'],
+          rvr['avg_rating_sim'], rvr['avg_help_giv_sim'],
+          rvr['avg_rating_dir_net'], rvr['avg_help_giv_tru_net'],
           rtr['num_reviews'],rtr['avg_rating'],rtr['avg_rel_rating'],
           rtr['avg_help_rec'],rtr['num_trustors'],rtr['num_trustees'],
           rtr['avg_help_giv'],rtr['avg_rel_help_giv'],rtr['sd_rating'],
           rtr['sd_help_rec'],rtr['sd_help_giv'],rtr['pagerank'],
+          rtr['avg_rating_sim'], rtr['avg_help_giv_sim'],
+          rtr['avg_rating_dir_net'], rtr['avg_help_giv_tru_net'],
           trust, vote['vote'])
 
   train_f.close()
