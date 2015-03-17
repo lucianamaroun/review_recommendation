@@ -1,6 +1,7 @@
 import numpy as np
 from cap import constants
 
+
 class Parameter(object):
   """ Class specifying a Parameter, which defines latent variables distributions
       and relationship with observed variables.  
