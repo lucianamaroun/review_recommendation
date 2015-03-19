@@ -80,7 +80,9 @@ class Variable(object):
     self.var = var 
     self.features = features
     self.value = np.zeros(size) 
-
+    self.samples = []
+    self.e_mean = 0
+    self.e_var = 0
 
 class VariableCollection(object):
   """ Class defining a collection of variables composing a model.
@@ -193,7 +195,7 @@ class VariableCollection(object):
     """
     self.u[review_id] = Variable('v', constants.K, 'V', 'var_u', features)
 
-  def get_alpha_mean_and_variance(self, voter_id, votes, sim, trust, parameters):
+  def get_alpha_mean_and_variance(self, voter_id, votes, parameters):
     """ Calculates mean and variance of probability distribution of [alpha|Rest].
     
         Args:
@@ -213,12 +215,15 @@ class VariableCollection(object):
     variance = 0
     mean = 0
     for vote in votes:
+      truth = vote['vote']
       review_id = vote['review']
       author_id = vote['author']
       rest = truth - self.beta[review_id].value - self.xi[author_id].value - \
-          sim[(voter_id, author_id)] * self.gamma[(author_id, voter_id)].value - \
-          trust[(voter_id, author_id)] * self.lamb[(author_id, voter_id)].value - \
           self.u[voter_id].value.T.dot(self.v[review_id].value)
+      rest -= self.gamma[(author_id, voter_id)].value if (author_id, voter_id) \
+          in self.gamma else 0
+      rest -= self.lambd[(author_id, voter_id)].value if (author_id, voter_id) \
+          in self.lambd else 0
       variance += 1/parameters.var_H + 1/parameters.var_alpha
       mean += rest/parameters.var_H + \
           parameters.d.dot(self.alpha[voter_id].features) / \
@@ -227,7 +232,7 @@ class VariableCollection(object):
     mean *= variance
     return mean, variance
 
-  def get_beta_mean_and_variance(self, review_id, votes, sim, trust, parameters):
+  def get_beta_mean_and_variance(self, review_id, votes, parameters):
     """ Calculates mean and variance of probability distribution of [beta|Rest].
     
         Args:
@@ -247,12 +252,15 @@ class VariableCollection(object):
     variance = 0
     mean = 0
     for vote in votes:
+      truth = vote['vote']
       voter_id = vote['voter']
       author_id = vote['author']
       rest = truth - self.alpha[voter_id].value - self.xi[author_id].value - \
-          sim[(voter_id, author_id)] * self.gamma[(author_id, voter_id)].value - \
-          trust[(voter_id, author_id)] * self.lamb[(author_id, voter_id)].value - \
           self.u[voter_id].value.T.dot(self.v[review_id].value)
+      rest -= self.gamma[(author_id, voter_id)].value if (author_id, voter_id) \
+          in self.gamma else 0
+      rest -= self.lambd[(author_id, voter_id)].value if (author_id, voter_id) \
+          in self.lambd else 0
       variance += 1/parameters.var_H + 1/parameters.var_beta
       mean += rest/parameters.var_H + \
           parameters.d.dot(self.beta[review_id].features) / \
@@ -261,7 +269,7 @@ class VariableCollection(object):
     mean *= variance
     return mean, variance
     
-  def get_xi_mean_and_variance(self, author_id, votes, sim, trust, parameters):
+  def get_xi_mean_and_variance(self, author_id, votes, parameters):
     """ Calculates mean and variance of probability distribution of [xi|Rest].
     
         Args:
@@ -281,12 +289,15 @@ class VariableCollection(object):
     variance = 0
     mean = 0
     for vote in votes:
+      truth = vote['vote']
       review_id = vote['review']
       voter_id = vote['voter']
       rest = truth - self.alpha[voter_id].value - self.beta[review_id].value - \
-          sim[(voter_id, author_id)] * self.gamma[(author_id, voter_id)].value - \
-          trust[(voter_id, author_id)] * self.lamb[(author_id, voter_id)].value - \
           self.u[voter_id].value.T.dot(self.v[review_id].value)
+      rest -= self.gamma[(author_id, voter_id)].value if (author_id, voter_id) \
+          in self.gamma else 0
+      rest -= self.lambd[(author_id, voter_id)].value if (author_id, voter_id) \
+          in self.lambd else 0
       variance += 1/parameters.var_H + 1/parameters.var_xi
       mean += rest/parameters.var_H + \
           parameters.d.dot(self.xi[author_id].features)/parameters.var_xi
@@ -294,8 +305,7 @@ class VariableCollection(object):
     mean *= variance
     return mean, variance
 
-  def get_gamma_mean_and_variance(self, author_voter, votes, sim, trust, 
-    parameters):
+  def get_gamma_mean_and_variance(self, author_voter, votes, parameters):
     """ Calculates mean and variance of probability distribution of [gamma|Rest].
     
         Args:
@@ -321,14 +331,16 @@ class VariableCollection(object):
     variance = 0
     mean = 0
     for vote in votes:
+      truth = vote['vote']
       review_id = vote['review']
       author_id, voter_id = author_voter
-      if not sim[(author_id, voter_id)]:
+      if (author_id, voter_id) not in self.gamma:
         continue
       rest = truth - self.alpha[voter_id].value - self.beta[review_id].value - \
           self.xi[author_id].value - \
-          trust[(voter_id, author_id)] * self.lamb[(author_id, voter_id)].value - \
           self.u[voter_id].value.T.dot(self.v[review_id].value)
+      rest -= self.lambd[(author_id, voter_id)].value if (author_id, voter_id) \
+          in self.lambd else 0
       variance += 1/parameters.var_H + 1/parameters.var_gamma
       mean += rest/parameters.var_H + \
           parameters.d.dot(self.gamma[author_voter].features) / \
@@ -337,8 +349,7 @@ class VariableCollection(object):
     mean *= variance
     return mean, variance
 
-  def get_lambda_mean_and_variance(self, author_voter, votes, sim, trust, 
-    parameters):
+  def get_lambda_mean_and_variance(self, author_voter, votes, parameters):
     """ Calculates mean and variance of probability distribution of [lambda|Rest].
     
         Args:
@@ -363,14 +374,16 @@ class VariableCollection(object):
     variance = 0
     mean = 0
     for vote in votes:
+      truth = vote['vote']
       review_id = vote['review']
       author_id, voter_id = author_voter
-      if not trust[(author_id, voter_id)]:
+      if (author_id, voter_id) not in self.lambd:
         continue
       rest = truth - self.alpha[voter_id].value - self.beta[review_id].value - \
           self.xi[author_id].value - \
-          sim[(voter_id, author_id)] * self.gamma[(author_id, voter_id)].value - \
           self.u[voter_id].value.T.dot(self.v[review_id].value)
+      rest -= self.gamma[(author_id, voter_id)].value if (author_id, voter_id) \
+          in self.gamma else 0
       variance += 1/parameters.var_H + 1/parameters.var_lambda
       mean += rest/parameters.var_H + \
           parameters.d.dot(self.lambd[author_voter])/parameters.var_lambda
@@ -378,7 +391,7 @@ class VariableCollection(object):
     mean *= variance
     return mean, variance
 
-  def get_u_mean_and_variance(self, voter_id, votes, sim, trust, parameters):
+  def get_u_mean_and_variance(self, voter_id, votes, parameters):
     """ Calculates mean and variance of probability distribution of [u|Rest].
     
         Args:
@@ -399,11 +412,14 @@ class VariableCollection(object):
     variance = np.zeros(constants.K, constants.K)
     mean = np.zeros(constants.K, 1)
     for vote in votes:
+      truth = vote['vote']
       review_id = vote['review']
       author_id = vote['author']
-      rest = truth - self.alpha[voter_id] - self.beta[review_id] - \
-          sim[(voter_id, author_id)] * self.gamma[(author_id, voter_id)] - \
-          trust[(voter_id, author_id)] * self.lamb[(author_id, voter_id)]
+      rest = truth - self.alpha[voter_id] - self.beta[review_id]
+      rest -= self.gamma[(author_id, voter_id)].value if (author_id, voter_id) \
+          in self.gamma else 0
+      rest -= self.lambd[(author_id, voter_id)].value if (author_id, voter_id) \
+          in self.lambd else 0
       variance += self.v[review_id].dot(self.v[review_id].T) / \
           parameters.var_H
       mean += rest*self.v[review_id]/parameters.var_H
@@ -412,7 +428,7 @@ class VariableCollection(object):
     mean = variance * (var_u_inv.dot(parameters.W.dot(features)) + mean)
     return mean, variance
 
-  def get_v_mean_and_variance(self, review_id, votes, sim, trust, parameters):
+  def get_v_mean_and_variance(self, review_id, trust, parameters):
     """ Calculates mean and variance of probability distribution of [v|Rest].
     
         Args:
@@ -433,11 +449,14 @@ class VariableCollection(object):
     variance = np.zeros(constants.K, constants.K)
     mean = np.zeros(constants.K, 1)
     for vote in votes:
+      truth = vote['vote']
       voter_id = vote['voter']
       author_id = vote['author']
-      rest = truth - self.alpha[voter_id] - self.beta[review_id] - \
-          sim[(voter_id, author_id)] * self.gamma[(author_id, voter_id)] - \
-          trust[(voter_id, author_id)] * self.lamb[(author_id, voter_id)]
+      rest = truth - self.alpha[voter_id] - self.beta[review_id]
+      rest -= self.gamma[(author_id, voter_id)].value if (author_id, voter_id) \
+          in self.gamma else 0
+      rest -= self.lambd[(author_id, voter_id)].value if (author_id, voter_id) \
+          in self.lambd else 0
       variance += self.u[voter_id].dot(self.u[voter_id].T) / \
           parameters.var_H
       mean += rest*self.u[voter_id]/parameters.var_H 
@@ -445,3 +464,24 @@ class VariableCollection(object):
     variance = np.linalg.inv(var_v_inv + variance)
     mean = variance * (var_v_inv.dot(parameters.D.dot(features)) + mean)
     return mean, variance
+
+  def calculate_empiric_mean_and_variance(self):
+    """ Calculates empiric mean and variance of the variables from samples.
+
+        Args:
+          None.
+
+        Returns:
+          None. The values of mean and variance are updated on Variable object.
+    """
+    for variable_group in [self.beta, self.alpha, self.xi, self.gamma,
+        self.lambd]:
+      for e_id, variable in variable_group:
+        variable.mean = np.mean(variable.samples)
+        variable.var = np.var(variable.samples)
+    for variable_group in [self.u, self.v]:
+      for e_id, variable in variable_group:
+        variable.mean = np.mean(variable.samples, axis=0)
+        variable.var = np.cov(np.array(variable.samples))
+
+
