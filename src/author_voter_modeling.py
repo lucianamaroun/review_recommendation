@@ -173,7 +173,7 @@ def calculate_connection_strength(author, voter, trusts):
   features['jacc_trustors'] = jaccard(author_trustors, voter_trustors)
   features['adamic_adar_trustees'] = adamic_adar_trustees(trusts, a_id, v_id)
   features['adamic_adar_trustors'] = adamic_adar_trustors(trusts, a_id, v_id)
-  features['katz'] = katz(trusts, a_id, v_id)
+#  features['katz'] = katz(trusts, a_id, v_id)
   return features
 
 
@@ -186,15 +186,15 @@ def calculate_connection_strength(author, voter, trusts):
     Returns:
       A dictionary of similarity features indexed by a pair of user ids.
 """
-def model_author_voter_similarity(train, users):
+def model_author_voter_similarity(train, users, similar):
   sim_features = {}
   for vote in train:
     author_id = vote['reviewer']
     voter_id = vote['voter']
-    if (voter_id, author_id) in sim_features or author_id not in \
-        similar[voter_id]:
+    if (author_id, voter_id) in sim_features or author_id not in \
+      similar[voter_id]:
       continue
-    sim_features[(voter_id, author_id)] = \
+    sim_features[(author_id, voter_id)] = \
         calculate_authoring_similarity(users[author_id], users[voter_id])
   return sim_features
 
@@ -213,10 +213,10 @@ def model_author_voter_connection(train, users, trusts):
   for vote in train:
     author_id = vote['reviewer']
     voter_id = vote['voter']
-    if (voter_id, author_id) in conn_features or author_id not in \
-      trusts[voter_id]:
+    if (author_id, voter_id) in conn_features or voter_id not in trusts or \
+      author_id not in trusts[voter_id]:
       continue
-    conn_features[(voter_id, author_id)] = \
+    conn_features[(author_id, voter_id)] = \
         calculate_connection_strength(users[author_id], users[voter_id], trusts)
 
   return conn_features
