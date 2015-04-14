@@ -52,8 +52,8 @@ class ParameterCollection(object):
     self.var_xi = Parameter('var_xi', (1, 1))
     self.var_gamma = Parameter('var_gamma', (1, 1))
     self.var_lambda = Parameter('var_lambda', (1, 1))
-    self.var_u = Parameter('var_u', (K, K))
-    self.var_v = Parameter('var_v', (K, K))
+    self.var_u = Parameter('var_u', (K, 1))
+    self.var_v = Parameter('var_v', (K, 1))
     self.var_H = Parameter('var_H', (1, 1))
 
 
@@ -407,7 +407,8 @@ class VariableCollection(object):
       variance += self.v[review_id].dot(self.v[review_id].T) / \
           parameters.var_H
       mean += rest*self.v[review_id]/parameters.var_H
-    var_u_inv = np.linalg.inv(parameters.var_u)
+    matrix_var_u = parameters.var_u.dot(np.identity(constants.K))
+    var_u_inv = np.linalg.inv(matrix_var_u)
     variance = np.linalg.inv(var_u_inv + variance)
     mean = variance * (var_u_inv.dot(parameters.W.dot(features)) + mean)
     return mean, variance
@@ -441,7 +442,8 @@ class VariableCollection(object):
       variance += self.u[voter_id].dot(self.u[voter_id].T) / \
           parameters.var_H
       mean += rest*self.u[voter_id]/parameters.var_H 
-    var_v_inv = np.linalg.inv(parameters.var_v)
+    matrix_var_v = parameters.var_v.dot(np.identity(constants.K))
+    var_v_inv = np.linalg.inv(matrix_var_v)
     variance = np.linalg.inv(var_v_inv + variance)
     mean = variance * (var_v_inv.dot(parameters.D.dot(features)) + mean)
     return mean, variance
