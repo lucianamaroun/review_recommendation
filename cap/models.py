@@ -31,7 +31,7 @@ class Parameter(object):
       else:
         self.value = np.array([np.random.random() + 0.000001 for _ in
             range(size)])
-    np.reshape(self.value, size)
+    self.value = np.reshape(self.value, size)
 
 
 class ParameterCollection(object):
@@ -60,9 +60,108 @@ class ParameterCollection(object):
     self.var_xi = Parameter('var_xi', 1)
     self.var_gamma = Parameter('var_gamma', 1)
     self.var_lambda = Parameter('var_lambda', 1)
-    self.var_u = Parameter('var_u', (constants.K, constants.K))
-    self.var_v = Parameter('var_v', (constants.K, constants.K))
+    self.var_u = Parameter('var_u', 1) 
+    self.var_v = Parameter('var_v', 1)
     self.var_H = Parameter('var_H', 1)
+
+  def adjust(self, variables):
+    print self.d.value
+    print self.var_alpha.value
+    print self.g.value
+    print self.var_beta.value
+    print self.b.value
+    print self.var_xi.value
+    self.adjust_alpha_related(variables.alpha)
+    self.adjust_beta_related(variables.beta)
+    self.adjust_xi_related(variables.xi) 
+    self.adjust_u_related(variables.u)
+    self.adjust_v_related(variables.v)
+    print self.d.value
+    print self.var_alpha.value
+    print self.g.value
+    print self.var_beta.value
+    print self.b.value
+    print self.var_xi.value
+
+  def adjust_alpha_related(self, alpha):
+    feature_vec = []
+    a_vec = []
+    for e_id in alpha:
+      feature_vec.append(np.reshape(alpha[e_id].features,
+          alpha[e_id].features.shape[0]))
+      a_vec.append(alpha[e_id].mean)
+    feature_vec = np.array(feature_vec)
+    a_vec = np.array(a_vec)
+    a_vec = np.reshape(a_vec, (a_vec.shape[0], 1))
+    inv = np.linalg.pinv(feature_vec.T.dot(feature_vec))
+    self.d.value = np.linalg.pinv(feature_vec.T.dot(feature_vec)) \
+        .dot(feature_vec.T.dot(a_vec)).T # different from cap (eta not defined),
+            # but the same as linear regression optimization
+    self.var_alpha.value = sum([(a.mean - self.d.value.dot(a.features))**2 + 
+        a.var for a in alpha.values()]) / len(alpha)
+
+  def adjust_beta_related(self, beta):
+    feature_vec = []
+    b_vec = []
+    for e_id in beta:
+      feature_vec.append(np.reshape(beta[e_id].features,
+          beta[e_id].features.shape[0]))
+      b_vec.append(beta[e_id].mean)
+    feature_vec = np.array(feature_vec)
+    b_vec = np.array(b_vec)
+    self.g.value = np.linalg.pinv(feature_vec.T.dot(feature_vec)) \
+        .dot(feature_vec.T.dot(b_vec)).T
+    self.var_beta.value = sum([(b.mean - self.g.value.dot(b.features))**2 + 
+        b.var for b in beta.values()]) / len(beta)
+
+  def adjust_xi_related(self, xi):
+    feature_vec = []
+    x_vec = []
+    for e_id in xi:
+      feature_vec.append(np.reshape(xi[e_id].features,
+          xi[e_id].features.shape[0]))
+      x_vec.append(xi[e_id].mean)
+    feature_vec = np.array(feature_vec)
+    x_vec = np.array(x_vec)
+    self.b.value = np.linalg.pinv(feature_vec.T.dot(feature_vec)) \
+        .dot(feature_vec.T.dot(x_vec)).T
+    self.var_xi.value = sum([(x.mean - self.b.value.dot(x.features))**2 + 
+        x.var for x in xi.values()]) / len(xi)
+
+  def adjust_u_related(self, u):
+    feature_vec = []
+    u_vec = []
+    for e_id in u:
+      feature_vec.append(np.reshape(u[e_id].features,
+          u[e_id].features.shape[0])) # each user, a row
+      u_vec.append(np.reshape(u[e_id].mean, u[e_id].mean.shape[0])) # user row
+    feature_vec = np.array(feature_vec)
+    u_vec = np.array(u_vec)
+    print feature_vec.size
+    inv = np.linalg.pinv(feature_vec.T.dot(feature_vec))
+    self.W.value = u_vec.T.dot(feature_vec).dot(inv)
+    self.var_u.value = 0
+    for e in u.values(): # inferrence for u and v, not sure
+      diff = e.mean - self.W.value.dot(e.features)
+      self.var_u.value += diff.T.dot(diff) + constants.K * e.var
+    self.var_u.value /= len(u)
+
+  def adjust_v_related(self, v):
+    feature_vec = []
+    v_vec = []
+    for e_id in v:
+      feature_vec.append(np.reshape(v[e_id].features,
+          v[e_id].features.shape[0])) # each user, a row
+      v_vec.append(np.reshape(v[e_id].mean, v[e_id].mean.shape[0])) # user row
+    feature_vec = np.array(feature_vec)
+    v_vec = np.array(v_vec)
+    inv = np.linalg.pinv(feature_vec.T.dot(feature_vec))
+    self.V.value = v_vec.T.dot(feature_vec).dot(inv)
+    self.var_v.value = 0
+    for e in v.values(): # inferrence for u and v, not sure
+      diff = e.mean - self.V.value.dot(e.features)
+      self.var_v.value += diff.T.dot(diff) + constants.K * e.var
+    self.var_v.value /= len(v)
 
 
 class Variable(object):
@@ -93,7 +192,7 @@ class Variable(object):
     self.e_var = 0
 
   def update_value(self, value):
-    self.value = np.reshape(value, (self.size, 1)) if self.size > 1 else 0 
+    self.value = np.reshape(value, (self.size, 1)) if self.size > 1 else value 
 
 
 class VariableCollection(object):
@@ -408,7 +507,7 @@ class VariableCollection(object):
       variance += self.v[review_id].value.dot(self.v[review_id].value.T) / \
           parameters.var_H.value
       mean += rest * self.v[review_id].value / parameters.var_H.value
-    var_u_inv = np.linalg.pinv(parameters.var_u.value)
+    var_u_inv = np.linalg.pinv(parameters.var_u.value * np.identity(constants.K))
     variance = np.linalg.pinv(var_u_inv + variance)
     mean = variance.dot(var_u_inv.dot(parameters.W.value.dot(self.u[voter_id]
         .features)) + mean)
@@ -441,7 +540,7 @@ class VariableCollection(object):
       variance += self.u[voter_id].value.dot(self.u[voter_id].value.T) / \
           parameters.var_H.value
       mean += rest * self.u[voter_id].value / parameters.var_H.value 
-    var_v_inv = np.linalg.pinv(parameters.var_v.value)
+    var_v_inv = np.linalg.pinv(parameters.var_v.value * np.identity(constants.K))
     variance = np.linalg.pinv(var_v_inv + variance)
     mean = variance.dot(var_v_inv.dot(parameters.V.value.dot(self.v[review_id]
         .features)) + mean)
@@ -456,25 +555,26 @@ class VariableCollection(object):
         Returns:
           None. The values of mean and variance are updated on Variable object.
     """
-    for variable_group in [self.beta, self.alpha, self.xi, self.gamma,
+    for variable_group in [self.alpha, self.beta, self.xi, self.gamma,
         self.lambd]:
       for e_id, variable in variable_group.items():
         variable.mean = np.mean(variable.samples)
         variable.var = np.var(variable.samples)
-        print variable.name
-        print variable.mean
-        print variable.var
-        print ''
+        #print variable.name
+        #print variable.mean
+        #print variable.var
+        #print variable.samples
+        #print ''
     for variable_group in [self.u, self.v]:
       for e_id, variable in variable_group.items():
         variable.mean = np.mean(variable.samples, axis=0)
         sample = np.array(variable.samples)
-        np.reshape(sample, (len(sample), len(sample[0])))
+        sample = np.reshape(sample, (len(sample), len(sample[0])))
         variable.var = np.cov(sample.T)
             # each variable should be a row
-        print variable.name
-        print variable.mean
-        print variable.var
-        print ''
+        #print variable.name
+        #print variable.mean
+        #print variable.var
+        #print ''
 
 

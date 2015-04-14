@@ -54,32 +54,24 @@ def map_review_features(review):
       review['verb_ratio'], review['adv_ratio'], review['fw_ratio'],
       review['sym_ratio'], review['noun_ratio'], review['punct_ratio'],
       review['kl'], review['pos_ratio'], review['neg_ratio']])
-  np.reshape(new_review, (17, 1))
+  new_review = np.reshape(new_review, (17, 1))
   return new_review
 
 
 def map_author_features(author):
   new_author = np.array([author['num_reviews'], author['avg_rating'],
       author['num_trustors'], author['num_trustees'], author['pagerank']])
-  np.reshape(new_author, (5, 1))
+  new_author = np.reshape(new_author, (5, 1))
   return new_author
 
 
 def map_voter_features(voter):
-  old_voter = voter.copy()
-  new_author = np.array([voter['num_trustors'], voter['num_trustees'],
+  new_voter = np.array([voter['num_trustors'], voter['num_trustees'],
       voter['pagerank'], voter['avg_rating'], voter['avg_rating_dir_net'],
       voter['avg_rating_sim'], voter['avg_help_giv'],
       voter['avg_help_giv_tru_net'], voter['avg_help_giv_sim']])
-  np.reshape(new_author, (9, 1))
-  if (np.isnan(new_author.T.dot(new_author))):
-    print voter
-    print old_voter
-    print voter['avg_help_giv_tru_net']
-    print type(voter['avg_help_giv_tru_net'])
-    import sys
-    sys.exit()
-  return new_author
+  new_voter = np.reshape(new_voter, (9, 1))
+  return new_voter
 
 
 def map_users_sim_features(users_sim):
@@ -87,7 +79,7 @@ def map_users_sim_features(users_sim):
       users_sim['cos_ratings'], users_sim['pear_ratings'],
       users_sim['diff_avg_ratings'], users_sim['diff_max_ratings'],
       users_sim['diff_min_ratings']])
-  np.reshape(new_users_sim, (7, 1))
+  new_users_sim = np.reshape(new_users_sim, (7, 1))
   return new_users_sim
 
 
@@ -96,7 +88,7 @@ def map_users_conn_features(users_conn):
       users_conn['jacc_trustors'], users_conn['adamic_adar_trustees'],
       users_conn['adamic_adar_trustors']#, users_conn['katz']
       ]) 
-  np.reshape(new_users_conn, (4, 1))
+  new_users_conn = np.reshape(new_users_conn, (4, 1))
   return new_users_conn
 
 
