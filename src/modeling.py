@@ -19,7 +19,7 @@ from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 _NUM_THREADS = 4
 _SAMPLE = True
-_SAMPLE_RATIO = 0.01
+_SAMPLE_RATIO = 0.001
 _TRAIN_FILE = '/var/tmp/luciana/train%d-foreign.csv' % int(_SAMPLE_RATIO * 100)
 _TEST_FILE = '/var/tmp/luciana/test%d-foreign.csv' % int(_SAMPLE_RATIO * 100)
 
@@ -36,25 +36,29 @@ _TEST_FILE = '/var/tmp/luciana/test%d-foreign.csv' % int(_SAMPLE_RATIO * 100)
 """
 def model():
   print 'Getting trust'
-  trusts = parser.parse_trusts()
+  import pickle
+  #trusts = parser.parse_trusts()
+  trusts = pickle.load(open('pkl/trusts.pkl', 'r'))
 
   print 'Modeling reviews'
-  if _SAMPLE:
-    sel_reviews = sampler.sample_reviews(_SAMPLE_RATIO)
-    reviews = model_reviews_parallel(_NUM_THREADS, sel_reviews)
-  else:
-    reviews = model_reviews_parallel(_NUM_THREADS)
+#  if _SAMPLE:
+#    sel_reviews = sampler.sample_reviews(_SAMPLE_RATIO)
+#    reviews = model_reviews_parallel(_NUM_THREADS, sel_reviews)
+#  else:
+#    reviews = model_reviews_parallel(_NUM_THREADS)
+  reviews = pickle.load(open('pkl/reviews.pkl', 'r'))
 
   print 'Split train and test'
-  train, test = split_votes(reviews)
+#  train, test = split_votes(reviews)
+  train = pickle.load(open('pkl/train.pkl', 'r'))
 
   print 'Modeling users'
   users = model_users(reviews, train, trusts)
-
+  pickle.dump(users, open('pkl/users.pkl', 'w'))
   print 'Outputting'
-  output_model(train, test, reviews, users, trusts)
+#  output_model(train, test, reviews, users, trusts)
 
-  return reviews, users, trusts, train, test
+#  return reviews, users, trusts, train, test
 
 
 """ Outputs feature model.
@@ -92,6 +96,9 @@ def output_model(train, test, reviews, users, trusts):
   for partition, out in [(train, train_f), (test, test_f)]:
     for vote in partition:
       r = reviews[vote['review']]
+      # skipping cold starts for now
+      if vote['voter'] not in users or r['user'] not in users:
+        continue
       rvr = users[r['user']] if r['user'] in users else \
           create_missing_user(r['user'], trusts)
       rtr = users[vote['voter']] if vote['voter'] in users else \
