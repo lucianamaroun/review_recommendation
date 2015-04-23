@@ -24,15 +24,19 @@ for review in parse_reviews():
     continue
   print >> _OUTPUT_R, '%d,%f,%f' % (review['id'], mean(votes), std(votes))
 
-users = {}
+user_votes = {}
+user_reviews = {}
 for review in parse_reviews():
   if not review['votes']:
     continue
   user = review['user']
-  if user not in users:
-    users[user] = []
-  users[user] += review['votes'].values()
-print >> _OUTPUT_U, 'id,mean,sd'
-for user_id, votes in users.items():
-  print >> _OUTPUT_U, '%s,%f,%f' % (user_id, mean(votes), std(votes))
+  if user not in user_votes:
+    user_votes[user] = []
+    user_reviews[user] = 0
+  user_votes[user] += review['votes'].values()
+  user_reviews[user] += 1
+print >> _OUTPUT_U, 'id,mean,sd,num_reviews'
+for user_id, votes in user_votes.items():
+  print >> _OUTPUT_U, '%s,%f,%f,%d' % (user_id, mean(votes), std(votes),
+      user_reviews[user_id])
   
