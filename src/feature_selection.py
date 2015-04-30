@@ -146,11 +146,11 @@ def rank_features_infogain(features, data, truth):
       None. The results are output to stdout.
 """
 def evaluate_features(features, data, truth):
-#  print 'Tree-based Feature Evaluation'
-#  tree_ranking = rank_features_tree(features, data, truth)
-#  for index, feature in enumerate(tree_ranking):
-#    print '%d. %s' % (index, feature)
-#  print '-----------------------------'
+  print 'Tree-based Feature Evaluation'
+  tree_ranking = rank_features_tree(features, data, truth)
+  for index, feature in enumerate(tree_ranking):
+    print '%d. %s' % (index, feature)
+  print '-----------------------------'
 
   print 'RFE Feature Evaluation'
   rfe_ranking = rank_features_rfe(features, data, truth)
@@ -158,11 +158,11 @@ def evaluate_features(features, data, truth):
     print '%d. %s' % (index, feature)
   print '-----------------------------'
 
-#  print 'InfoGain Feature Evaluation'
-#  ig_ranking = rank_features_infogain(features, data, truth)
-#  for index, feature in enumerate(ig_ranking):
-#    print '%d. %s' % (index, feature)
-#  print '-----------------------------'
+  print 'InfoGain Feature Evaluation'
+  ig_ranking = rank_features_infogain(features, data, truth)
+  for index, feature in enumerate(ig_ranking):
+    print '%d. %s' % (index, feature)
+  print '-----------------------------'
 
 
 if __name__ == '__main__':

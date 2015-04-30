@@ -17,11 +17,11 @@ from src.data_division import split_votes
 from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 
-_NUM_THREADS = 4
-_SAMPLE = True
-_SAMPLE_RATIO = 0.001
-_TRAIN_FILE = '/var/tmp/luciana/train%d-foreign.csv' % int(_SAMPLE_RATIO * 100)
-_TEST_FILE = '/var/tmp/luciana/test%d-foreign.csv' % int(_SAMPLE_RATIO * 100)
+_NUM_THREADS = 12
+_SAMPLE = False
+_SAMPLE_RATIO = 1
+_TRAIN_FILE = '/var/tmp/luciana/train.csv'
+_TEST_FILE = '/var/tmp/luciana/test.csv'
 
 
 """ Models reviews, users and votes in order to generate features from
@@ -35,30 +35,32 @@ _TEST_FILE = '/var/tmp/luciana/test%d-foreign.csv' % int(_SAMPLE_RATIO * 100)
       Reviews, users, trusts dictionaries and train and test. 
 """
 def model():
-  print 'Getting trust'
   import pickle
-  #trusts = parser.parse_trusts()
-  trusts = pickle.load(open('pkl/trusts.pkl', 'r'))
+  print 'Getting trust'
+  trusts = parser.parse_trusts()
+  pickle.dump(trusts, open('pkl/trusts.pkl', 'w'))
 
   print 'Modeling reviews'
-#  if _SAMPLE:
-#    sel_reviews = sampler.sample_reviews(_SAMPLE_RATIO)
-#    reviews = model_reviews_parallel(_NUM_THREADS, sel_reviews)
-#  else:
-#    reviews = model_reviews_parallel(_NUM_THREADS)
-  reviews = pickle.load(open('pkl/reviews.pkl', 'r'))
+  if _SAMPLE:
+    sel_reviews = sampler.sample_reviews(_SAMPLE_RATIO)
+    reviews = model_reviews_parallel(_NUM_THREADS, sel_reviews)
+  else:
+    reviews = model_reviews_parallel(_NUM_THREADS)
+  pickle.dump(reviews, open('pkl/reviews-all.pkl', 'w'))
 
   print 'Split train and test'
-#  train, test = split_votes(reviews)
-  train = pickle.load(open('pkl/train.pkl', 'r'))
+  train, test = split_votes(reviews)
+  pickle.dump(train, open('pkl/train-all.pkl', 'w'))
+  pickle.dump(test, open('pkl/test-all.pkl', 'w'))
 
   print 'Modeling users'
   users = model_users(reviews, train, trusts)
-  pickle.dump(users, open('pkl/users.pkl', 'w'))
-  print 'Outputting'
-#  output_model(train, test, reviews, users, trusts)
+  pickle.dump(users, open('pkl/users-all.pkl', 'w'))
 
-#  return reviews, users, trusts, train, test
+  print 'Outputting'
+  output_model(train, test, reviews, users, trusts)
+
+  return reviews, users, trusts, train, test
 
 
 """ Outputs feature model.

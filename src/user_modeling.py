@@ -26,10 +26,6 @@ from src.author_voter_modeling import obtain_vectors # put in a specialized modu
 def create_user(user_id):
   user = {}
   user['id'] = user_id
-  if user_id == '5506501':
-    print 'warm start'
-    import sys
-    sys.exit()
   user['num_reviews'] = 0
   user['num_votes_rec'] = 0
   user['num_votes_giv'] = 0
@@ -64,10 +60,6 @@ def create_missing_user(user_id, trusts):
   prank = pagerank(trusts)
   user = {}
   user['id'] = user_id
-  if user_id == '5506501':
-    print 'cold start'
-    import sys
-    sys.exit()
   user['num_reviews'] = 0
   user['num_votes_rec'] = 0
   user['num_votes_giv'] = 0
@@ -96,12 +88,6 @@ def create_missing_user(user_id, trusts):
     tru_net_avg = [users[n]['avg_help_giv'] for n in trust_net if n in users
         and users[n]['avg_help_giv'] >= 0]
     user['avg_help_giv_tru_net'] = mean(tru_net_avg) if tru_net_avg else -1
-    import numpy as np
-    if np.isnan(user['avg_help_giv_tru_net']):
-      print trust_net 
-      print [users[s]['avg_help_giv'] for s in trust_net if s in users] 
-      import sys
-      sys.exit()
   return user
 
 
@@ -180,11 +166,6 @@ def finalize_user_features(users, trusts):
       users[user]['avg_rel_help_giv'] /= float(users[user]['num_votes_giv'])
       users[user]['sd_help_giv'] = std(users[user]['sd_help_giv'], ddof=1)
     users[user]['pagerank'] = prank[user] if user in prank else -1.0
-    import numpy as np
-    if np.isnan(users[user]['avg_help_giv_tru_net']):
-      print user
-      import sys
-      sys.exit()
 
 """ Calculates aggregated features from immediate social network of user.
 
@@ -210,12 +191,6 @@ def calculate_network_agg_features(users, trusts):
         and users[n]['avg_help_giv'] >= 0]
     users[u_id]['avg_help_giv_tru_net'] = mean(tru_net_avg) if tru_net_avg \
         else -1
-    import numpy as np
-    if np.isnan(users[u_id]['avg_help_giv_tru_net']):
-      print trust_net
-      print [users[s]['avg_help_giv'] for s in trust_net if s in users] 
-      import sys
-      sys.exit()
 
 
 """ Calculates features related to statistics of user in the trust network.
@@ -274,12 +249,6 @@ def calculate_similar_agg_features(users, similar):
     sim_avg = [users[s]['avg_help_giv'] for s in similar[user]
         if users[s]['avg_help_giv'] >= 0]
     users[user]['avg_help_giv_sim'] = mean(sim_avg) if sim_avg else -1
-    import numpy as np
-    if np.isnan(users[user]['avg_help_giv_sim']):
-      print similar[user]
-      print [users[s]['avg_help_giv'] for s in similar[user] if s in users] 
-      import sys
-      sys.exit()
 
 """ Gets similar users for each user. A user B is amongst user A similar users
     if their cosine rating similarity is higher than the average similarity of
