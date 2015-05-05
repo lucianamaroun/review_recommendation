@@ -9,13 +9,13 @@
 """
 
 
-from math import log
+from math import log, isnan
 
 import numpy as np
 import networkx as nx
-from scipy.spatial.distance import cosine
 from scipy.stats import pearsonr
 
+from src.aux import cosine
 
 _BETA = 0.005
 
@@ -32,7 +32,7 @@ _BETA = 0.005
 def jaccard(set_a, set_b):
   inters = set_a.intersection(set_b)
   union = set_a.union(set_b)
-  return float(len(inters)) / len(union)
+  return float(len(inters)) / len(union) if len(union) > 0 else 0.0
 
 
 """ Computes Adamic-Adar index regarding commons trustors (in-degree). This
@@ -142,13 +142,18 @@ def calculate_authoring_similarity(author, voter):
       voter['ratings'])
   features['common_rated'] = len(author_rated.intersection(voter_rated))
   features['jacc_rated'] = jaccard(author_rated, voter_rated)
-  features['cos_ratings'] = 1 - cosine(author_ratings, voter_ratings)
-  features['pear_ratings'] = pearsonr(author_ratings, voter_ratings)[0]
+  features['cos_ratings'] = cosine(author_ratings, voter_ratings)
+  pearson = pearsonr(author_ratings, voter_ratings)[0]  
+  features['pear_ratings'] = pearson if not isnan(pearson) else 0.0 
   features['diff_avg_ratings'] = author['avg_rating'] - voter['avg_rating']
-  features['diff_max_ratings'] = max(author['ratings'].values()) - \
-      max(voter['ratings'].values())
-  features['diff_min_ratings'] = min(author['ratings'].values()) - \
-      min(voter['ratings'].values()) 
+  if not author['ratings'].values() or not voter['ratings'].values():
+    features['diff_max_ratings'] = -1
+    features['diff_min_ratings'] = -1
+  else:
+    features['diff_max_ratings'] = max(author['ratings'].values()) - \
+        max(voter['ratings'].values())
+    features['diff_min_ratings'] = min(author['ratings'].values()) - \
+        min(voter['ratings'].values()) 
   return features
 
 

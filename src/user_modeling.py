@@ -8,12 +8,13 @@
       Used only as a module, not directly callable.
 """
 
-
+import math
 from numpy import std, mean
 from networkx import pagerank
-from scipy.spatial.distance import cosine
 
 from src.author_voter_modeling import obtain_vectors # put in a specialized module
+from src.aux import cosine
+
 
 """ Initializes user features.
 
@@ -266,16 +267,16 @@ def get_similar_users(users):
   sim = {}
   for user in users:
     sim[user] = {}
-  for user_a in users.keys():
+  for user_a in users.iterkeys():
     a_ratings = users[user_a]['ratings']
-    for user_b in [u for u in users.keys() if u > user_a]:
+    for user_b in [u for u in users.iterkeys() if u > user_a]:
       b_ratings = users[user_b]['ratings']
       vec_a, vec_b = obtain_vectors(a_ratings, b_ratings)
-      sim[user_a][user_b] = sim[user_b][user_a] = 1 - cosine(vec_a, vec_b)
+      sim[user_a][user_b] = sim[user_b][user_a] = cosine(vec_a, vec_b)
   sim_users = {}
   for user in sim:
     avg = mean(sim[user].values())
-    sim_users[user] = [u for u in sim[user] if sim[user][u] > avg]
+    sim_users[user] = [u for u in sim[user] if sim[user][u] >= avg]
   return sim_users
   
 

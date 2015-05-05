@@ -1,8 +1,9 @@
 import numpy as np
 from scipy.stats import logistic
 
-from cap import contants as const
-
+import cap.constants as const
+from cap.aux import sigmoid, sigmoid_der1, sigmoid_der2
+from cap.newton_raphson import newton_raphson
 
 class Parameter(object):
   """ Class specifying a Parameter, which defines latent variables distributions
@@ -71,17 +72,22 @@ class ParameterCollection(object):
     print self.var_beta.value
     print self.b.value
     print self.var_xi.value
+    print self.r.value
+    print self.var_gamma.value
     self.adjust_alpha_related(variables.alpha)
     self.adjust_beta_related(variables.beta)
     self.adjust_xi_related(variables.xi) 
     self.adjust_u_related(variables.u)
     self.adjust_v_related(variables.v)
+    self.adjust_gamma_related(variables, variables.gamma)
     print self.d.value
     print self.var_alpha.value
     print self.g.value
     print self.var_beta.value
     print self.b.value
     print self.var_xi.value
+    print self.r.value
+    print self.var_gamma.value
 
   def adjust_alpha_related(self, alpha):
     feature_vec = []
@@ -163,6 +169,13 @@ class ParameterCollection(object):
       self.var_v.value += diff.T.dot(diff) + const.K * e.var
     self.var_v.value /= len(v)
 
+  def adjust_gamma_related(self, variables, gamma):
+    size = gamma.itervalues().next().features.shape[0]
+    r = np.random.random((1, size))
+    r = newton_raphson(variables.get_first_derivative_r, 
+        variables.get_second_derivative_r, self, r)
+    self.var_gamma = sum([(e.mean - self.r.dot(e.features)) ** 2 + e.var \
+        for e_id, e in gamma])
 
 class Variable(object):
   """ Class defining a latent variable.
@@ -264,7 +277,7 @@ class VariableCollection(object):
         Returns:
           None.
     """
-    self.gamma[(author_voter)] = Variable('gamma', 1, 'r', 'var_gamma',
+    self.gamma[author_voter] = Variable('gamma', 1, 'r', 'var_gamma',
         features)
 
   def add_lambda_variable(self, author_voter, features):
@@ -279,7 +292,7 @@ class VariableCollection(object):
         Returns:
           None.
     """
-    self.lambd[(author_voter)] = Variable('lambda', 1, 'h', 'var_lambda',
+    self.lambd[author_voter] = Variable('lambda', 1, 'h', 'var_lambda',
         features)
 
   def add_u_variable(self, voter_id, features):
@@ -547,6 +560,37 @@ class VariableCollection(object):
     mean = variance.dot(var_v_inv.dot(parameters.V.value.dot(self.v[review_id]
         .features)) + mean)
     return mean, variance
+
+  def get_first_derivative_r(self, r, parameters):
+    size = len(self.gamma[self.gamma.iterkeys().next()].features)
+    der = [0] * size 
+    for author_voter in self.gamma:
+      p = self.gamma[author_voter].features
+      rp = r.T.dot(p)
+      for sample in self.gamma[author_voter].samples:
+        der = der + (sigmoid(rp) - self.gamma[author_voter].sample) * \
+            sigmoid_der1(rp) * p
+    der = 1 / parameters.var_gamma * der
+    return np.array(der)    
+
+  def get_second_derivative_r(self, r, parameters):
+    size = len(self.gamma[self.gamma.iterkeys().next()].features)
+    der = [[0] * size] * size 
+    for author_voter in self.gamma:
+      p = self.gamma[author_voter].features
+      rp = r.dot(p)
+      print p
+      p = p.reshape(1, p.size)
+      for sample in self.gamma[author_voter].samples:
+        der = der + (sigmoid_der1(rp) ** 2 + 
+            (sigmoid(rp) - sample) * sigmoid_der2(rp)) * p.T.dot(p)
+      print p
+      print rp
+      print p.reshape(p.size, 1).dot(p.reshape(1, p.size))
+      import sys
+      sys.exit()
+    der = 1 / parameters.var_gamma * der
+    return der    
 
   def calculate_empiric_mean_and_variance(self):
     """ Calculates empiric mean and variance of the variables from samples.

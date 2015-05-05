@@ -103,17 +103,17 @@ def main():
   users = pickle.load(open('pkl/users.pkl', 'r'))
   train = pickle.load(open('pkl/train.pkl', 'r'))
   
- # similar = get_similar_users(users)
+  similar = get_similar_users(users)
  # trusts = parse_trusts()
- # pickle.dump(similar, open('pkl/similar.pkl', 'w'))
+  pickle.dump(similar, open('pkl/similar.pkl', 'w'))
  # pickle.dump(trusts, open('pkl/trusts.pkl', 'w'))
-  similar = pickle.load(open('pkl/similar.pkl', 'r'))
+ # similar = pickle.load(open('pkl/similar.pkl', 'r'))
   trusts = pickle.load(open('pkl/trusts.pkl', 'r'))
   
   print 'Modeling interaction'
-  #sim_author_voter = model_author_voter_similarity(train, users, similar)
-  #pickle.dump(sim_author_voter, open('pkl/sim_author_voter.pkl', 'w'))
-  sim_author_voter = pickle.load(open('pkl/sim_author_voter.pkl', 'r'))
+  sim_author_voter = model_author_voter_similarity(train, users, similar)
+  pickle.dump(sim_author_voter, open('pkl/sim_author_voter.pkl', 'w'))
+  #sim_author_voter = pickle.load(open('pkl/sim_author_voter.pkl', 'r'))
   #conn_author_voter = model_author_voter_connection(train, users, trusts)
   #pickle.dump(conn_author_voter, open('pkl/conn_author_voter.pkl', 'w'))
   conn_author_voter = pickle.load(open('pkl/conn_author_voter.pkl', 'r'))
