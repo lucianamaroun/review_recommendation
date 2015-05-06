@@ -49,7 +49,7 @@ class ParameterCollection(object):
         Returns:
           None.
     """
-    self.g = Parameter('g', (1, 17))
+    self.g = Parameter('g', (, 17))
     self.d = Parameter('d', (1, 9))
     self.b = Parameter('b', (1, 5))
     self.r = Parameter('r', (1, 7))
@@ -65,29 +65,6 @@ class ParameterCollection(object):
     self.var_v = Parameter('var_v', 1)
     self.var_H = Parameter('var_H', 1)
 
-  def adjust(self, variables):
-    print self.d.value
-    print self.var_alpha.value
-    print self.g.value
-    print self.var_beta.value
-    print self.b.value
-    print self.var_xi.value
-    print self.r.value
-    print self.var_gamma.value
-    self.adjust_alpha_related(variables.alpha)
-    self.adjust_beta_related(variables.beta)
-    self.adjust_xi_related(variables.xi) 
-    self.adjust_u_related(variables.u)
-    self.adjust_v_related(variables.v)
-    self.adjust_gamma_related(variables, variables.gamma)
-    print self.d.value
-    print self.var_alpha.value
-    print self.g.value
-    print self.var_beta.value
-    print self.b.value
-    print self.var_xi.value
-    print self.r.value
-    print self.var_gamma.value
 
   def adjust_alpha_related(self, alpha):
     feature_vec = []
@@ -579,48 +556,11 @@ class VariableCollection(object):
     for author_voter in self.gamma:
       p = self.gamma[author_voter].features
       rp = r.dot(p)
-      print p
       p = p.reshape(1, p.size)
       for sample in self.gamma[author_voter].samples:
         der = der + (sigmoid_der1(rp) ** 2 + 
             (sigmoid(rp) - sample) * sigmoid_der2(rp)) * p.T.dot(p)
-      print p
-      print rp
-      print p.reshape(p.size, 1).dot(p.reshape(1, p.size))
-      import sys
-      sys.exit()
     der = 1 / parameters.var_gamma * der
     return der    
-
-  def calculate_empiric_mean_and_variance(self):
-    """ Calculates empiric mean and variance of the variables from samples.
-
-        Args:
-          None.
-
-        Returns:
-          None. The values of mean and variance are updated on Variable object.
-    """
-    for variable_group in [self.alpha, self.beta, self.xi, self.gamma,
-        self.lambd]:
-      for e_id, variable in variable_group.items():
-        variable.mean = np.mean(variable.samples)
-        variable.var = np.var(variable.samples)
-        #print variable.name
-        #print variable.mean
-        #print variable.var
-        #print variable.samples
-        #print ''
-    for variable_group in [self.u, self.v]:
-      for e_id, variable in variable_group.items():
-        variable.mean = np.mean(variable.samples, axis=0)
-        sample = np.array(variable.samples)
-        sample = np.reshape(sample, (len(sample), len(sample[0])))
-        variable.var = np.cov(sample.T)
-            # each variable should be a row
-        #print variable.name
-        #print variable.mean
-        #print variable.var
-        #print ''
 
 
