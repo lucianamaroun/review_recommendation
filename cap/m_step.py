@@ -1,9 +1,7 @@
-_N_ITERATIONS = 50
-
-def perform_m_step(variables, parameters):
-  optimize_parameters(variables, parameters)
+def perform_m_step(variables):
+  optimize_parameters(variables)
   
-def optimize_parameters(variables, parameters):
-  for parameter_group in parameters:
-    for parameter in parameter_group:
-      parameter.optimize(variables)
+def optimize_parameters(variables):
+  for variable_group in variables.itervalues():
+    variable_group.weight_param.optimize(variable_group.iter_instances())
+    variable_group.var_param.optimize(variable_group.iter_instances())

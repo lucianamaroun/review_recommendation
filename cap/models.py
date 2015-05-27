@@ -1,18 +1,86 @@
-import numpy as np
-from scipy.stats import logistic
+from numpy import array, random, reshape, mean, std, identity
+from numpy.linalg import pinv
 
-import cap.constants as const
+from cap import constants as const
 from cap.aux import sigmoid, sigmoid_der1, sigmoid_der2
 from cap.newton_raphson import newton_raphson
 
-class Parameter(object):
+
+class Value(object):
+  """ Class representing a value in the algorithm, either a scalar or a matrix.
+  """
+
+  def __init__(self, name, shape):
+    """ Constructor of value. Any value has a shape and a value, which is 
+        randomly initialized.
+
+        Args:
+          name: representative name of this value.
+          shape: a positive integer or a 2-tuple of positive integers specifying
+            the shape of a scalar or a matrix, respectively.
+
+        Returns:
+          None.
+    """
+    self.name = name
+    self.shape = shape
+    self._initialize()
+
+  def _initialize(self):
+    """ Initilizes the value according to the shape. The value can be a scalar, 
+        in which case the shape is not a tuple, or a matrix. The added values
+        are random.
+
+        Observations:
+        - To assure the values are bigger than 1, a small positive value is
+        added.
+        - If the shape is not a single positive integer nor a tuple of
+        positive integers, an exception is raised and the execution is
+        interrupted.
+        
+        Args:
+          None.
+
+        Returns:
+          None.
+    """
+    if type(self.shape) is int and self.shape == 1:
+      self.value = random.random() + 0.0000001
+    elif type(self.shape) is tuple and len(self.shape) == 2 and \
+        type(self.shape[0]) is int and type(self.shape[1]) is int and \
+        self.shape[0] > 0 and self.shape[1] > 0:
+      self.value = array([[random.random() + 0.0000001 for _ in
+          range(self.shape[1])] for _ in range(self.shape[0])])
+    else:
+      raise TypeError('TypeError: shape should be a positive int or a 2-tuple of positive ints.')
+
+  def update(self, value):
+    """ Updates the value.
+        
+        Observations: 
+        - If the shape is the new value is not the same as the previous one, an
+        exception is raised and the execution is interrupted.
+       
+        Args:
+          value: value to replace the old one.
+        
+        Returns:
+          None.
+    """
+    if (type(value) != type(self.value)):
+      raise TypeError('TypeError: value should have type %s' % type(self.value))
+    elif (hasattr(value, 'shape') and self.shape != value.shape):
+      raise TypeError('TypeError: value should have shape (%d, %d)' % self.shape)
+    self.value = value 
+
+
+class Parameter(Value):
   """ Class specifying a Parameter, which defines latent variables distributions
       and relationship with observed variables.  
   """
 
-  def __init__(self, name, size):
-    """ Constructor of Parameter. The values are randomly initialized using
-        Uniform(0, 1).
+  def __init__(self, name, shape):
+    """ Constructor of Parameter.
 
         Args:
           name: string with the name of the parameter.
@@ -21,546 +89,798 @@ class Parameter(object):
         Returns:
           None.
     """
-    self.name = name
-    self.size = size
-    if type(size) is tuple:
-      self.value = np.array([[np.random.random() + 0.0000001 for _ in
-          range(size[1])] for _ in range(size[0])])
-    else:
-      if size == 1:
-        self.value = np.random.random() + 0.000001
-      else:
-        self.value = np.array([np.random.random() + 0.000001 for _ in
-            range(size)])
-    self.value = np.reshape(self.value, size)
+    super(Parameter, self).__init__(name, shape)
 
 
-class ParameterCollection(object):
-  """ Class specifying the collection of parameters of the model. Each parameter
-      is singularly defined, that is, there is only one for all the instances.
+class ScalarVarianceParameter(Parameter):
+  """ Class specifying a Scalar Parameter representing a distribution's
+      variance.  
   """
 
-  def __init__(self):
-    """ Constructor of ParameterCollection.
-    
+  def __init__(self, name):
+    """ Constructor of ScalarVarianceParameter. 
+
         Args:
-          None.
-        
+          name: string with the name of the parameter.
+
         Returns:
           None.
     """
-    self.g = Parameter('g', (, 17))
-    self.d = Parameter('d', (1, 9))
-    self.b = Parameter('b', (1, 5))
-    self.r = Parameter('r', (1, 7))
-    self.h = Parameter('h', (1, 4))#5))
-    self.W = Parameter('W', (const.K, 9))
-    self.V = Parameter('V', (const.K, 17))
-    self.var_beta = Parameter('var_beta', 1)
-    self.var_alpha = Parameter('var_alpha', 1)
-    self.var_xi = Parameter('var_xi', 1)
-    self.var_gamma = Parameter('var_gamma', 1)
-    self.var_lambda = Parameter('var_lambda', 1)
-    self.var_u = Parameter('var_u', 1)
-    self.var_v = Parameter('var_v', 1)
-    self.var_H = Parameter('var_H', 1)
+    super(ScalarVarianceParameter, self).__init__(name, 1)
+  
+  def optimize(self, variable_group):
+    """ Optimizes the value of the parameter using the scalar latent variables
+        associated with it and the weight parameter.
+    
+        Args:
+          variable_group: variable group whose variance of distribution is
+            represented by this paramter.
+
+        Returns:
+          None, but the value field of the parameter is updated.
+    """
+    size = variable_group.get_size()
+    w_value = variable_group.weight_param.value
+    sse = 0
+    var_sum = 0
+    for v in variable_group.iter_instances():
+      reg = w.T.dot(v.features)
+      sse += (v.empiric_mean - reg)**2
+      var_sum += v.empiric_var
+    self.update((sse + var_sum) / size)
 
 
-  def adjust_alpha_related(self, alpha):
-    feature_vec = []
-    a_vec = []
-    for e_id in alpha:
-      feature_vec.append(np.reshape(alpha[e_id].features,
-          alpha[e_id].features.shape[0]))
-      a_vec.append(alpha[e_id].mean)
-    feature_vec = np.array(feature_vec)
-    a_vec = np.array(a_vec)
-    a_vec = np.reshape(a_vec, (a_vec.shape[0], 1))
-    inv = np.linalg.pinv(feature_vec.T.dot(feature_vec))
-    self.d.value = np.linalg.pinv(feature_vec.T.dot(feature_vec)) \
-        .dot(feature_vec.T.dot(a_vec)).T # different from cap (eta not defined),
-            # but the same as linear regression optimization
-    self.var_alpha.value = sum([(a.mean - self.d.value.dot(a.features))**2 + 
-        a.var for a in alpha.values()]) / len(alpha)
+class ArrayVarianceParameter(Parameter):
+  """ Class specifying a Array Parameter representing a distribution's
+      variance.
+  """
 
-  def adjust_beta_related(self, beta):
-    feature_vec = []
-    b_vec = []
-    for e_id in beta:
-      feature_vec.append(np.reshape(beta[e_id].features,
-          beta[e_id].features.shape[0]))
-      b_vec.append(beta[e_id].mean)
-    feature_vec = np.array(feature_vec)
-    b_vec = np.array(b_vec)
-    self.g.value = np.linalg.pinv(feature_vec.T.dot(feature_vec)) \
-        .dot(feature_vec.T.dot(b_vec)).T
-    self.var_beta.value = sum([(b.mean - self.g.value.dot(b.features))**2 + 
-        b.var for b in beta.values()]) / len(beta)
+  def __init__(self, name, shape):
+    """ Constructor of ArrayVarianceParameter.
+    
+        Args:
+          name: string with the name of the parameter.
+          size: pair with vector or matrix dimensions.
 
-  def adjust_xi_related(self, xi):
-    feature_vec = []
-    x_vec = []
-    for e_id in xi:
-      feature_vec.append(np.reshape(xi[e_id].features,
-          xi[e_id].features.shape[0]))
-      x_vec.append(xi[e_id].mean)
-    feature_vec = np.array(feature_vec)
-    x_vec = np.array(x_vec)
-    self.b.value = np.linalg.pinv(feature_vec.T.dot(feature_vec)) \
-        .dot(feature_vec.T.dot(x_vec)).T
-    self.var_xi.value = sum([(x.mean - self.b.value.dot(x.features))**2 + 
-        x.var for x in xi.values()]) / len(xi)
+        Returns:
+          None.
+    """
+    super(ArrayVarianceParameter, self).__init__(name, shape)
+  
+  def optimize(self, variable_group):
+    """ Optimizes the value of the parameter using the vector latent variables
+        associated with it and the weight parameter.
+    
+        Observations:
+        - As the regression objective is a vector, there are in fact multiple
+          regressions. However, there is only one variance parameter. This, the
+          size if multiplied by the dimension of the variable (although it is
+          not clear in the papers Regression-based Latent Factor Models KDD'09
+          nor in Context-aware Review Helpfulness Rating Prediction RecSys'13.
 
-  def adjust_u_related(self, u):
-    feature_vec = []
-    u_vec = []
-    for e_id in u:
-      feature_vec.append(np.reshape(u[e_id].features,
-          u[e_id].features.shape[0])) # each user, a row
-      u_vec.append(np.reshape(u[e_id].mean, u[e_id].mean.shape[0])) # user row
-    feature_vec = np.array(feature_vec)
-    u_vec = np.array(u_vec)
-    print feature_vec.size
-    inv = np.linalg.pinv(feature_vec.T.dot(feature_vec))
-    self.W.value = u_vec.T.dot(feature_vec).dot(inv)
-    self.var_u.value = 0
-    for e in u.values(): # inferrence for u and v, not sure
-      diff = e.mean - self.W.value.dot(e.features)
-      self.var_u.value += diff.T.dot(diff) + const.K * e.var
-    self.var_u.value /= len(u)
+        Args:
+          variable_group: variable group whose variance of distribution is
+            represented by this paramter.
 
-  def adjust_v_related(self, v):
-    feature_vec = []
-    v_vec = []
-    for e_id in v:
-      feature_vec.append(np.reshape(v[e_id].features,
-          v[e_id].features.shape[0])) # each user, a row
-      v_vec.append(np.reshape(v[e_id].mean, v[e_id].mean.shape[0])) # user row
-    feature_vec = np.array(feature_vec)
-    v_vec = np.array(v_vec)
-    inv = np.linalg.pinv(feature_vec.T.dot(feature_vec))
-    self.V.value = v_vec.T.dot(feature_vec).dot(inv)
-    self.var_v.value = 0
-    for e in v.values(): # inferrence for u and v, not sure
-      diff = e.mean - self.V.value.dot(e.features)
-      self.var_v.value += diff.T.dot(diff) + const.K * e.var
-    self.var_v.value /= len(v)
+        Returns:
+          None, but the value field of the parameter is updated.
+    """
+    size = variable_group.get_size() * variable_group.get_shape()[0]
+    w_value = variable_group.weight_param.value
+    sse = 0
+    var_sum = 0
+    for v in variable_group.iter_instances():
+      reg = w.T.dot(v.features)
+      sse += sum(((v.empiric_mean - reg)**2).reshape(-1).tolist())
+      var_sum += sum(diagonal(v.empiric_var).tolist())
+    self.update((sse + var_sum) / size)
 
-  def adjust_gamma_related(self, variables, gamma):
-    size = gamma.itervalues().next().features.shape[0]
-    r = np.random.random((1, size))
-    r = newton_raphson(variables.get_first_derivative_r, 
-        variables.get_second_derivative_r, self, r)
-    self.var_gamma = sum([(e.mean - self.r.dot(e.features)) ** 2 + e.var \
-        for e_id, e in gamma])
 
-class Variable(object):
+class EntityScalarParameter(Parameter):
+  """ Class specifying a  Parameter, that is, collection of regression
+      weights, and associated to an Entity Scalar Variable.
+  """
+
+  def __init__(self, name, shape):
+    """ Constructor of EntityScalarParameter. 
+
+        Args:
+          name: string with the name of the parameter.
+          size: pair with vector or matrix dimensions.
+
+        Returns:
+          None.
+    """
+    super(EntityScalarParameter, self).__init__(name, shape)
+  
+  def optimize(self, variable_group):
+    """ Optimizes the value of the weight parameter using the vector latent
+        variables associated with it.
+    
+        Observations:
+        - This optimization is the OLS for linear regression solution.
+        - The solution is a little bit different from Context-aware Review
+        Helpfulness Rating Prediction RecSys'13 because there is an eta variable
+        in their solution that is not specified.
+         
+        Args:
+          variable_group: variable group whose weight of the regression used for
+            calculating the mean of the distribution is represented by this
+            paramter.
+
+        Returns:
+          None, but the value field of the parameter is updated.
+    """
+    feat_matrix = array([v.features for v in variable_group.iter_instances()])
+    var_vec = array([v.value for v in variable_group.iter_instances()])
+    var_vec = reshape(var_vec, (var_vec.shape[0], 1))
+    inv = pinv(feat_matrix.T.dot(feat_matrix))
+    new_value = pinv(feat_matrix.T.dot(feat_matrix)) \
+        .dot(feat_matrix.T.dot(var_vec)).T
+    self.update(new_value)
+
+
+class EntityArrayParameter(Parameter):
+  """ Class specifying a  Parameter, that is, collection of regression
+      weights, and associated to an Entitiy Array Variable.
+  """
+
+  def __init__(self, name, shape):
+    """ Constructor of EntityArrayParameter.
+     
+        Args:
+          name: string with the name of the parameter.
+          size: pair with vector or matrix dimensions.
+
+        Returns:
+          None.
+    """
+    super(EntityScalarParameter, self).__init__(name, shape)
+  
+  def optimize(self, variable_group):
+    """ Optimizes the value of the weight parameter using the vector latent
+        variables associated with it.
+    
+        Observations:
+        - This optimization is the OLS for linear regression solution.
+        - The solution is a little bit different from Context-aware Review
+        Helpfulness Rating Prediction RecSys'13 because there is an eta variable
+        in their solution that is not specified.
+        - Since the regression output is a vector, it is in fact a collection of
+        regression problems.     
+        
+        Args:
+          variable_group: variable group whose weight of the regression used for
+            calculating the mean of the distribution is represented by this
+            paramter.
+
+        Returns:
+          None, but the value field of the parameter is updated.
+    """
+    feat_matrix = array([v.features for v in variable_group.iter_instances()])
+    var_vec = array([v.value.reshape(-1) for v in \
+        variable_group.iter_instances()])
+    inv = pinv(feat_matrix.T.dot(feat_matrix))
+    new_value = var_vec.T.dot(feature_vec).dot(inv)
+    self.update(new_value)
+
+
+class InteractionScalarParameter(Parameter):
+  """ Class specifying a  Parameter, that is, collection of regression
+      weights, and associated to an Interaction Scalar Variable modified by an
+      indicator variable ().
+  """
+
+  def __init__(self, name, shape):
+    """ Constructor of InteractionParameter.
+
+        Args:
+          name: string with the name of the parameter.
+          size: pair with vector or matrix dimensions.
+
+        Returns:
+          None.
+    """
+    super(InteractionParameter, self).__init__(name, shape)
+  
+  def optimize(self, variable_group):
+    """ Optimizes the value of the weight parameter using the indicated scalar
+        latent variables associated with it.
+    
+        Observations:
+        - This optimization is the OLS for linear regression solution.
+        - Since the problem is not a linear regression due to the sigmoid
+        function, the problem is converted into minimizing the error by
+        finding the value of the derivative which is equal to zero. Since the
+        parameter is a vector, finding the values of this derivative is not easy
+        and it is, thus, approximated by using Newton-Raphson method. 
+        
+        Args:
+          variable_group: variable group whose weight of the regression used for
+            calculating the mean of the distribution is represented by this
+            paramter.
+
+        Returns:
+          None, but the value field of the parameter is updated.
+    """
+    new_value = newton_raphson(self.get_derivative_1, self.get_derivative_2, 
+        variable_group, self.value)
+    self.update(new_value) 
+
+  def get_derivative_1(self, value, variable_group):
+    """ Gets the first derivative of the expectation with respect to the
+        parameter.
+    
+        Observations:
+        - The expectation is the expectation of the log-likelihood with
+        respect to the latent variables posterior distribution, found in the
+        E-step of the EM method.
+
+        Args:
+          value: value of the parameter to calculate the derivative at this
+            point.
+          variable_group: variable group whose weight of the regression used for
+            calculating the mean of the distribution is represented by this
+            paramter.
+    
+        Returns:
+          The derivative at point value.
+    """
+    size = variable_group.get_size()
+    der = [0] * size 
+    for variable in variable_group.iter_instances():
+      f = variable.features
+      dot = param_value.T.dot(f)
+      for sample in variable.samples:
+        der = der + (sigmoid(dot) - sample) * sigmoid_der1(dot) * f
+    der = 1 / variable_group.var_param.value * der
+    return der
+
+  def get_derivative_2(self, value, variable_group):
+    """ Gets the second derivative of the expectation with respect to the
+        parameter.
+
+        Observations:
+        - The expectation is the expectation of the log-likelihood with
+        respect to the latent variables posterior distribution, found in the
+        E-step of the EM method.
+
+        Args:
+          value: value of the parameter to calculate the derivative at this
+            point.
+          variable_group: variable group whose weight of the regression used for
+            calculating the mean of the distribution is represented by this
+            paramter.
+    
+        Returns:
+          The derivative at point value.
+    """
+    size = variable_group.get_size()
+    der = [[0] * size] * size 
+    for variable in variable_group.iter_instances():
+      f = variable.features
+      dot = value.T.dot(f)
+      for sample in variable.samples:
+        der = der + (sigmoid_der1(dot) ** 2 + (sigmoid(dot) - sample) * \
+            sigmoid_der2(dot)) * f.dot(f.T)
+    der = 1 / variable_group.var_param * der
+    return der 
+
+
+class Variable(Value):
   """ Class defining a latent variable.
   """
   
-  def __init__(self, name, size, coef, var, features): 
+  def __init__(self, name, shape, entity_id, e_type, features): 
     """ Constructor of Variable.
     
         Args:
-          name: string with the name of the variable.
-          size: pair with the dimensions of the variable.
-          coef: name of the coefficients multiplying features.
-          var: name of the variance parameter.
-          features: set of observed features associated with the variable.
+          name: a string with the variable group name.
+          shape: a tuple of positive integers or a positive integer with the
+            shape of the variable.
+          entity_id: a string with the id of the entity holding this variable.
+          e_type: a string or a tuple with entities types related to this
+            variable.
+          features: array of observed features associated with the variable.
           
         Returns:
           None.
     """
-    self.name = name
-    self.size = size 
-    self.coef = coef 
-    self.var = var 
-    self.features = np.reshape(features, (features.shape[0], 1))
-    self.value = np.reshape(np.zeros(size), (size, 1)) if size > 1 else 0 
+    super(Variable, self).__init__(name, shape)
+    self.entity_id = entity_id
+    self.e_type = e_type
+    self.features = reshape(features, (features.shape[0], 1))
     self.samples = []
-    self.e_mean = 0
-    self.e_var = 0
+    self.empiric_mean = None
+    self.empiric_var = None
 
-  def update_value(self, value):
-    self.value = np.reshape(value, (self.size, 1)) if self.size > 1 else value 
+  def add_sample(self, value):
+    """ Add a sample of this variable to the list of samples.
 
+        Observations:
+        - The sample is used for Gibbs Sampling when approximating the joint
+        distribution of latent and observed variables.
 
-class VariableCollection(object):
-  """ Class defining a collection of variables composing a model.
+        Args:
+          value: a value of the type of the variable.
+          
+        Returns:
+          None. The value is added to the list of samples    
+    """
+    self.samples.append(value)
+
+  def get_rest_value(self, variable_groups, vote):
+    """ Gets the value of the variable of the truth minus all the other terms
+        except the one involving this variable, for a given vote.
+
+        Args:
+          variable_groups: dictionary of variable_groups.
+          vote: dictionary of a modeled vote.
+
+        Returns:
+          The value of rest, which is equal to the truth value minus all other
+        terms.
+    """    
+    truth = vote['vote']
+    rest = truth
+    names = variable_groups.keys()[:]
+    self_var_group = variable_groups[self.name]
+    for name in names:
+      if name == self.name or name == self_var_group.pair_name:
+        continue
+      var_group = variable_groups[name]
+      var_value = var_group.get_instance_sample_value(vote)
+      if var_group.pair_name:
+        pair_name = var_group.pair_name
+        pair_value = variable_groups[pair_name].get_instance_sample_value(vote)
+        rest = rest - var_value.T.dot(pair_value)
+        names.remove(pair_name) # pair is not processed again
+      else:
+        rest = rest - var_value
+    return rest
+
+class ScalarVariable(Variable):
+  """ Class defining a scalar latent variable.
   """
-
-  def __init__(self):
-    """ Constructor of VariableCollection.
-
-        Args:
-          None. The variables are added through methods.
-
-        Returns:
-          None.
-    """
-    self.beta = {}
-    self.alpha = {}
-    self.xi = {}
-    self.gamma = {}
-    self.lambd = {}
-    self.u = {}
-    self.v = {}
-
-  def add_beta_variable(self, review_id, features):
-    """ Adds a beta variable associated with a review.
+  
+  def __init__(self, name, entity_id, e_type, features): 
+    """ Constructor of Variable.
     
         Args:
-          review_id: string with the id of the review.
-          features: a np.array with size (17, 1) with review content features.
-        
+          name: a string with the name of this variable type.
+          entity_id: id of the entity holding this variable.
+          e_type: a string with the name of the entity associated to this
+            variable (review, reviewer or votes).
+          features: array of observed features associated with the variable.
+          
         Returns:
           None.
     """
-    self.beta[review_id] = Variable('beta', 1, 'g', 'var_beta', features)
+    super(ScalarVariable, self).__init__(name, 1, entity_id, e_type, features)
 
-  def add_alpha_variable(self, voter_id, features):
-    """ Adds an alpha variable associated with a voter.
+  def calculate_empiric_mean(self):
+    """ Calculates the empiric mean of this variable using the samples.
+
+        Args:
+          None.
+
+        Returns:
+          None. The empiric mean field is updated in this object.
+    """
+    self.empiric_mean = mean(self.samples)
+
+  def calculate_empiric_var(self):
+    """ Calculates the empiric variance of this variable using the samples.
+
+        Args:
+          None.
+
+        Returns:
+          None. The empiric variance field is updated in this object.
+    """
+    self.empiric_var = std(self.samples, ddof=1) ** 2
+
+
+class ArrayVariable(Variable):
+  """ Class defining a latent variable.
+  """
+  
+  def __init__(self, name, shape, entity_id, e_type, features): 
+    """ Constructor of Variable.
     
         Args:
-          voter_id: string with the id of the voter.
-          features: a np.array with size (9, 1) with voter individual features.
-        
+          shape: a tuple of positive integers or a positive integer with the
+            shape of the variable.
+          entity_id: id of the entity holding this variable.
+          features: array of observed features associated with the variable.
+          
         Returns:
           None.
     """
-    self.alpha[voter_id] = Variable('alpha', 1, 'd', 'var_alpha', features)
-
-  def add_xi_variable(self, author_id, features):
-    """ Adds a xi variable associated with an author.
-    
-        Args:
-          author_id: string with the id of the author.
-          features: a np.array with size (5, 1) with author individual features.
-        
-        Returns:
-          None.
-    """
-    self.xi[author_id] = Variable('xi', 1, 'b', 'var_xi', features)
-
-  def add_gamma_variable(self, author_voter, features):
-    """ Adds a gamma variable associated with a pair of author and voter.
-    
-        Args:
-          author_voter: pair of strings with the id of the author and the id of
-            the voter, respectively.
-          features: a np.array with size (7, 1) with author and voter similarity
-            features.
-        
-        Returns:
-          None.
-    """
-    self.gamma[author_voter] = Variable('gamma', 1, 'r', 'var_gamma',
+    super(ArrayVariable, self).__init__(name, shape, entity_id, e_type,
         features)
 
-  def add_lambda_variable(self, author_voter, features):
-    """ Adds a lambda variable associated with a pair of author and voter.
+  def calculate_empiric_mean(self):
+    """ Calculates the empiric mean of this variable using the samples, 
+        vector case.
+
+        Args:
+          None.
+
+        Returns:
+          None. The empiric mean field is updated in this object.
+    """
+    self.empiric_mean = (1.0 / len(self.samples)) * sum(self.samples)
+
+  def calculate_empiric_var(self):
+    """ Calculates the empiric variance of this variable using the samples,
+        vector case.
+
+        Args:
+          None.
+
+        Returns:
+          None. The empiric variance field is updated in this object.
+    """
+    samples = array([s.reshape(-1) for s in self.samples])
+    n_dim = samples.shape[1]
+    self.empiric_var = [std(samples[:,i], ddof=1) ** 2 for i in xrange(n_dim)]
+
+
+class EntityScalarVariable(ScalarVariable):
+  """ Class defining a scalar latent variable associated to an entity.
+  """
+  
+  def __init__(self, name, entity_id, e_type, features): 
+    """ Constructor of EntityScalarLatentVariable.
     
         Args:
-          author_voter: pair of strings with the id of the author and the id of
-            the voter, respectively.
-          features: a np.array with size (5, 1) with author and voter connection
-            features.
-        
+          name: a string with the name of the latent variable group.
+          entity_id: id of the entity holding this variable.
+          e_type: a string with the name of the entity associated to this
+            variable.
+          features: array of observed features associated with the variable.
+          
         Returns:
           None.
     """
-    self.lambd[author_voter] = Variable('lambda', 1, 'h', 'var_lambda',
+    super(EntityScalarVariable, self).__init__(name, entity_id, e_type,
         features)
 
-  def add_u_variable(self, voter_id, features):
-    """ Adds a u lantent vector associated with a voter.
+  def get_cond_mean_and_var(self, variable_groups, votes):
+    """ Calculates the conditional mean and variance of this variable.
+    
+        Observations:
+        - Returns the mean and variance of this variable used by Gibbs Sampling.
+        - The distribution is conditioned on all other latent variables.
+
+        Args:
+          variable_groups: a dictionary of Group objects.
+          votes: the list of votes (training set).
+
+        Returns:
+          A 2-tuple with the mean and variance, both floats.
+    """
+    related_votes = [v for v in votes if v[self.e_type] == self.entity_id]
+    variance = 0
+    mean = 0
+    var_group = variable_groups[self.name]
+    for vote in related_votes:
+      rest = self.get_rest_value(variable_groups, vote)
+      variance += 1/var_group.var_H.value
+      mean += rest/var_group.var_H.value
+    variance = 1 / (1/var_group.var_param.value + variance)
+    print var_group.weight_param.value.shape
+    print var_group.weight_param.value
+    print self.features.shape
+    print self.features
+    print var_group.var_param.value
+
+    mean += var_group.weight_param.value.T.dot(self.features) / \
+        var_group.var_param.value
+    mean *= variance
+    return mean, variance
+
+
+class EntityArrayVariable(ArrayVariable):
+  """ Class defining a latent variable.
+  """
+  
+  def __init__(self, name, shape, entity_id, e_type, features): 
+    """ Constructor of Variable.
     
         Args:
-          voter_id: string with the id of the voter.
-          features: a np.array with size (9, 1) with voter individual features.
+          shape: a tuple of positive integers or a positive integer with the
+            shape of the variable.
+          entity_id: id of the entity holding this variable.
+          features: array of observed features associated with the variable.
+          
+        Returns:
+          None.
+    """
+    super(EntityArrayVariable, self).__init__(name, shape, entity_id, e_type,
+        features)
+
+  def get_cond_mean_and_var(self, variable_groups, votes):
+    """ Calculates the conditional mean and variance of this variable.
+    
+        Observations:
+        - Returns the mean and variance of this variable used by Gibbs Sampling.
+        - The distribution is conditioned on all other latent variables.
+
+        Args:
+          variable_groups: a dictionary of Group objects.
+          votes: the list of votes (training set).
+
+        Returns:
+          A 2-tuple with the mean, a vector of size K, and variance, a
+        covariance matrix of size KxK.
+    """
+    related_votes = [v for v in votes if v[self.e_type] == self.entity_id]
+    variance = np.zeros((const.K, const.K))
+    mean = np.zeros((const.K, 1))
+    var_group = variable_groups[self.name]
+    for vote in related_votes:
+      rest = self.get_rest_value(variable_groups, vote)
+      variance += 1/var_group.var_H.value
+      mean += rest/var_group.var_H.value
+      pair_value = variable_groups[self.pair_name].get_instance_sampled_value(vote)
+      variance += pair_value.dot(pair_value.T) / \
+          var_group.var_H.value 
+      mean += rest * pair_value / var_group.var_H.value
+    matrix_var_u = var_group.var_param.value * identity(const.K)
+    var_u_inv = pinv(matrix_var_u)
+    variance = pinv(var_u_inv + variance)
+    mean = variance.dot(var_u_inv.dot(var_group.weight_param.value \
+        .dot(self.features) + mean))
+    return mean, variance
+
+
+class InteractionScalarVariable(ScalarVariable):
+  """ Class defining a latent variable.
+  """
+  
+  def __init__(self, name, entity_id, e_type, features): 
+    """ Constructor of Variable.
+    
+        Args:
+          entity_id: id of the entity holding this variable.
+          features: array of observed features associated with the variable.
+          
+        Returns:
+          None.
+    """
+    super(InteractionScalarVariable, self).__init__(name, entity_id,
+        e_type, features)
+
+  def get_cond_mean_and_var(self, variable_groups, votes):
+    """ Calculates the conditional mean and variance of this variable.
+    
+        Observations:
+        - Returns the mean and variance of this variable used by Gibbs Sampling.
+        - The distribution is conditioned on all other latent variables.
+
+        Args:
+          variable_groups: a dictionary of Group objects.
+          votes: the list of votes (training set).
+
+        Returns:
+          A 2-tuple with the mean and variance, both float values.
+    """
+    related_votes = [v for v in votes if v[self.e_type] == self.entity_id]
+    variance = 0
+    mean = 0
+    var_group = variable_groups[self.name]
+    for vote in related_votes:
+      rest = self.get_rest_value(variable_groups, vote)
+      variance += 1/var_group.var_H.value
+      mean += rest/var_group.var_H.value
+    variance = 1 / (1/var_group.var_param.value + variance)
+    mean += sigmoid(var_group.weight_param.value.T.dot(self.features)) \
+        / var_group.var_param.value
+    mean *= variance
+    return mean, variance
+
+
+class Group(object):
+  """ Class container of a set of variables of the same type but regarding 
+      different entities.
+  """
+  
+  def __init__(self, name, shape, e_type, weight_param, var_param, var_H):
+    """ Initializes the group of variables.
+
+        Args:
+          name: a string with the name of the group.
+          shape: the shape of each variable instance.
+          e_type: entity or tuple relating features' keys (e.g.: review) on 
+            votes to entities.
+          weight_param: parameter object of regression weights.
+          var_param: variance parameter of this variable's distribution.
+          var_H: variance parameter of the responde variable, the helpfulness
+            vote.
+    """
+    self.name = name
+    self.shape = shape
+    self.e_type = e_type
+    self.weight_param = weight_param
+    self.var_param = var_param
+    self.var_H = var_H
+    self.variables = {} 
+    self.pair_name = None
+  
+  def iter_instances(self):
+    """ Iterates over the instances of this variable.
+    
+        Args:
+          None.
+
+        Returns:
+          An iterator over Variable objects of this group.
+    """
+    for variable in self.variables.itervalues():
+      yield variable 
+
+  def get_instance_sample_value(self, vote):
+    """ Gets the last sampled value of an instance.
+
+        Observations:
+        - The instance is obtained through the entity value of this variable
+        defined in the vote dictionary.
+
+        Args:
+          vote: a dictionary of the vote.
+
+        Returns:
+          A value of the type of the variable with the sample.
+    """
+    if type(self.e_type) is tuple:
+      e_id = vote[self.e_type[0]], vote[self.e_type[1]]
+    else:
+      e_id = vote[self.e_type]
+    if e_id not in self.variables:
+      return 0.0 * self.variables.itervalues().next().value # any value
+    if not self.variables[e_id].samples:
+      return self.variables[e_id].value # initial value
+    return self.variables[e_id].samples[-1]
+
+  def get_size(self):
+    """ Gets the number of instances of this variable.
+
+        Args:
+          None.
+
+        Returns:
+          An integer with the size.
+    """
+    return len(self.variables)
+
+  def set_pair_name(self, pair_name):
+    """ Sets pair name of a variable. A pair name is the name of another
+        variable whose term in the prediction formula is associated to this
+        variable, for instance, through a product.
+
+        Args:
+          pair_name: a string with the name of the pair variable.
+
+        Returns:
+          None. The pair_name field is altered on this object.
+    """
+    self.pair_name = pair_name
+
+
+class EntityScalarGroup(Group):
+  """ Class representing a group of variables which are scalar and
+      related to an entity.
+  """ 
+
+  def __init__(self, name, e_type, weight_param, var_param, var_H):
+    """ Initializes the EntityScalarGroup object.
+
+        Args:
+          name: a string with the name of the group.
+          e_type: a string with the entity type related to this group.
+          weight_param: parameter object of regression weights.
+          var_param: variance parameter of this variable's distribution.
+          var_H: variance parameter of the response variable (helpfulness vote).
+
+        Returns:
+          None.
+    """
+    super(EntityScalarGroup, self).__init__(name, 1, e_type,
+        weight_param, var_param, var_H)
+
+  def add_instance(self, entity_id, features):
+    """ Adds an instance variable of this group with the appropriate Variable
+        subclass.
+    
+        Args:
+          entity_id: the id of the entity associated to the instance.
+          features: an array of features regarding the entity,
+    
+        Returns:
+          None. The instance is included in the dictionary of instances of this
+        object.
+    """
+    if entity_id in self.variables:
+      return 
+    self.variables[entity_id] = EntityScalarVariable(self.name, entity_id,
+        self.e_type, features)
+
+
+class EntityArrayGroup(Group):
+  """ Class representing a group of variables which are vectors and
+      entity-related.
+  """ 
+
+  def __init__(self, name, shape, e_type, weight_param, var_param, var_H):
+    """ Initializes the EntityArrayGroup object. 
+
+        Args:
+          name: a string with the name of the group.
+          shape: an integer or tuple with the shape of each variable instance.
+          e_type: a string with the entity name associated to the variable.
+          weight_param: parameter object of regression weights.
+          var_param: variance parameter of this variable's distribution.
+          var_H: variance parameter of the response variable (helpfulness vote).
         
         Returns:
           None.
     """
-    self.u[voter_id] = Variable('u', const.K, 'W', 'var_u', features)
+    super(EntityArrayGroup, self).__init__(name, shape, e_type, 
+        weight_param, var_param, var_H)
 
+  def add_instance(self, entity_id, features): 
+    """ Adds an instance variable of this group with the appropriate Variable
+        subclass.
 
-  def add_v_variable(self, review_id, features):
-    """ Adds a v lantent vector associated with a review.
-    
         Args:
-          review_id: string with the id of the review.
-          features: a np.array with size (17, 1) with review content features.
-        
+          entity_id: the id of the entity associated to the instance.
+          features: an array of features regarding the entity,
+    
+        Returns:
+          None. The instance is included in the dictionary of instances of this
+        object.
+    """ 
+    if entity_id in self.variables:
+      return 
+    self.variables[entity_id] = EntityArrayVariable(self.name, self.shape,
+        entity_id, self.e_type, features)
+
+
+class InteractionScalarGroup(Group):
+  """ Class representing a set of variables which are scalar and entity-related.
+  """ 
+
+  def __init__(self, name, e_type, weight_param, var_param, varH):
+    """ Initializes the InteractionScalarGroup object.
+
+        Args:
+          name: a string with the name of the group.
+          e_type: a string with the entity type name related to this group.
+          weight_param: parameter object of regression weights.
+          var_param: variance parameter of this variable's distribution.
+          var_H: variance parameter of the response variable (helpfulness vote).
+      
         Returns:
           None.
     """
-    self.v[review_id] = Variable('v', const.K, 'V', 'var_u', features)
+    super(InteractionScalarGroup, self).__init__(name, 1,
+        e_type, weight_param, var_param, varH)
 
-  def get_alpha_mean_and_variance(self, voter_id, votes, parameters):
-    """ Calculates mean and variance of probability distribution of [alpha|Rest].
-    
+  def add_instance(self, entity_id, features): 
+    """ Adds an instance variable of this group with the appropriate Variable
+        subclass.
+
         Args:
-          voter_id: the id of voter to index alpha.
-          votes: list of vote dictionaries whose voter was voter_id.
-          parameters: a ParameterCollection object with the current parameters of
-            the model.
-
-        Returns:
-          A pair with the calculated mean and variance.
-    """
-    variance = 0
-    mean = 0
-    for vote in votes:
-      truth = vote['vote']
-      review_id = vote['review']
-      author_id = vote['reviewer']
-      rest = truth - self.beta[review_id].value - self.xi[author_id].value - \
-          self.u[voter_id].value.T.dot(self.v[review_id].value)
-      rest -= self.gamma[(author_id, voter_id)].value if (author_id, voter_id) \
-          in self.gamma else 0
-      rest -= self.lambd[(author_id, voter_id)].value if (author_id, voter_id) \
-          in self.lambd else 0
-      variance += 1/parameters.var_H.value
-      mean += rest/parameters.var_H.value
-    variance = 1 / (1/parameters.var_alpha.value + variance)
-    mean += parameters.d.value.dot(self.alpha[voter_id].features) / \
-        parameters.var_alpha.value
-    mean *= variance
-    return mean, variance
-
-  def get_beta_mean_and_variance(self, review_id, votes, parameters):
-    """ Calculates mean and variance of probability distribution of [beta|Rest].
+          entity_id: the id of the entity associated to the instance.
+          features: an array of features regarding the entity,
     
-        Args:
-          review_id: the id of voter to index beta.
-          votes: list of vote dictionaries associated with the review.
-          parameters: a ParameterCollection object with the current parameters of
-            the model.
-
         Returns:
-          A pair with the calculated mean and variance.
-    """
-    variance = 0
-    mean = 0
-    for vote in votes:
-      truth = vote['vote']
-      voter_id = vote['voter']
-      author_id = vote['reviewer']
-      rest = truth - self.alpha[voter_id].value - self.xi[author_id].value - \
-          self.u[voter_id].value.T.dot(self.v[review_id].value)
-      rest -= self.gamma[(author_id, voter_id)].value if (author_id, voter_id) \
-          in self.gamma else 0
-      rest -= self.lambd[(author_id, voter_id)].value if (author_id, voter_id) \
-          in self.lambd else 0
-      variance += 1/parameters.var_H.value
-      mean += rest/parameters.var_H.value
-    variance = 1 / (1/parameters.var_beta.value + variance)
-    mean += parameters.g.value.dot(self.beta[review_id].features) / \
-        parameters.var_beta.value
-    mean *= variance
-    return mean, variance
-    
-  def get_xi_mean_and_variance(self, author_id, votes, parameters):
-    """ Calculates mean and variance of probability distribution of [xi|Rest].
-    
-        Args:
-          author_id: the id of voter to index xi.
-          votes: list of vote dictionaries whose author is author_id.
-          parameters: a ParameterCollection object with the current parameters of
-            the model.
-
-        Returns:
-          A pair with the calculated mean and variance.
-    """
-    variance = 0
-    mean = 0
-    for vote in votes:
-      truth = vote['vote']
-      review_id = vote['review']
-      voter_id = vote['voter']
-      rest = truth - self.alpha[voter_id].value - self.beta[review_id].value - \
-          self.u[voter_id].value.T.dot(self.v[review_id].value)
-      rest -= self.gamma[(author_id, voter_id)].value if (author_id, voter_id) \
-          in self.gamma else 0
-      rest -= self.lambd[(author_id, voter_id)].value if (author_id, voter_id) \
-          in self.lambd else 0
-      variance += 1/parameters.var_H.value
-      mean += rest/parameters.var_H.value
-    variance = 1 / (1/parameters.var_xi.value + variance)
-    mean += parameters.b.value.dot(self.xi[author_id].features) / \
-        parameters.var_xi.value
-    mean *= variance
-    return mean, variance
-
-  def get_gamma_mean_and_variance(self, author_voter, votes, parameters):
-    """ Calculates mean and variance of probability distribution of [gamma|Rest].
-    
-        Args:
-          author_voter: a pair with author and voter ids, respectively, to index
-            gamma.
-          votes: list of vote dictionaries whose author and voter are defined in
-            author_voter pair.
-          parameters: a ParameterCollection object with the current parameters of
-            the model.
-
-        Observation:
-          If author and voter are not similar, gamma variable between them is not
-        defined and, thus, not considered.
-
-        Returns:
-          A pair with the calculated mean and variance.
-    """
-    variance = 0
-    mean = 0
-    for vote in votes:
-      truth = vote['vote']
-      review_id = vote['review']
-      author_id, voter_id = author_voter
-      if (author_id, voter_id) not in self.gamma:
-        continue
-      rest = truth - self.alpha[voter_id].value - self.beta[review_id].value - \
-          self.xi[author_id].value - \
-          self.u[voter_id].value.T.dot(self.v[review_id].value)
-      rest -= self.lambd[(author_id, voter_id)].value if (author_id, voter_id) \
-          in self.lambd else 0
-      variance += 1/parameters.var_H.value
-      mean += rest/parameters.var_H.value
-    variance = 1 / (1/parameters.var_gamma.value + variance)
-    mean += logistic.pdf(parameters.r.value.dot(self.gamma[author_voter]
-        .features)) / parameters.var_gamma.value
-    mean *= variance
-    return mean, variance
-
-  def get_lambda_mean_and_variance(self, author_voter, votes, parameters):
-    """ Calculates mean and variance of probability distribution of [lambda|Rest].
-    
-        Args:
-          author_voter: a pair with author and voter ids, respectively, to index
-            lambda.
-          votes: list of vote dictionaries whose author is author_id.
-          parameters: a ParameterCollection object with the current parameters of
-            the model.
-
-        Observation:
-          If author and voter are not strongly connected, lambda variable between
-        them is not defined and, thus, not considered.
-
-        Returns:
-          A pair with the calculated mean and variance.
-    """
-    variance = 0
-    mean = 0
-    for vote in votes:
-      truth = vote['vote']
-      review_id = vote['review']
-      author_id, voter_id = author_voter
-      if (author_id, voter_id) not in self.lambd:
-        continue
-      rest = truth - self.alpha[voter_id].value - self.beta[review_id].value - \
-          self.xi[author_id].value - \
-          self.u[voter_id].value.T.dot(self.v[review_id].value)
-      rest -= self.gamma[(author_id, voter_id)].value if (author_id, voter_id) \
-          in self.gamma else 0
-      variance += 1/parameters.var_H.value
-      mean += rest/parameters.var_H.value
-    variance = 1 / (1/parameters.var_lambda.value + variance)
-    mean += logistic.pdf(parameters.h.value.dot(self.lambd[author_voter]
-        .features)) / parameters.var_lambda.value
-    mean *= variance
-    return mean, variance
-
-  def get_u_mean_and_variance(self, voter_id, votes, parameters):
-    """ Calculates mean and variance of probability distribution of [u|Rest].
-    
-        Args:
-          voter_id: the id of voter to index u.
-          votes: list of vote dictionaries whose voter is voter_id.
-          parameters: a ParameterCollection object with the current parameters of
-            the model.
-
-        Returns:
-          A pair with the calculated mean and variance, with sizes (K, 1) and (K,
-        K), respectively.
-    """
-    variance = np.zeros((const.K, const.K))
-    mean = np.zeros((const.K, 1))
-    for vote in votes:
-      truth = vote['vote']
-      review_id = vote['review']
-      author_id = vote['reviewer']
-      rest = truth - self.alpha[voter_id].value - self.beta[review_id].value
-      rest -= self.gamma[(author_id, voter_id)].value if (author_id, voter_id) \
-          in self.gamma else 0
-      rest -= self.lambd[(author_id, voter_id)].value if (author_id, voter_id) \
-          in self.lambd else 0
-      variance += self.v[review_id].value.dot(self.v[review_id].value.T) / \
-          parameters.var_H.value
-      mean += rest * self.v[review_id].value / parameters.var_H.value
-    matrix_var_u = parameters.var_u.value * np.identity(const.K)
-    var_u_inv = np.linalg.pinv(matrix_var_u)
-    variance = np.linalg.pinv(var_u_inv + variance)
-    mean = variance.dot(var_u_inv.dot(parameters.W.value.dot(self.u[voter_id]
-        .features)) + mean)
-    return mean, variance
-
-  def get_v_mean_and_variance(self, review_id, votes, parameters):
-    """ Calculates mean and variance of probability distribution of [v|Rest].
-    
-        Args:
-          review_id: the id of review to index v.
-          votes: list of vote dictionaries associated with review_id.
-          parameters: a ParameterCollection object with the current parameters of
-            the model.
-
-        Returns:
-          A pair with the calculated mean and variance, with sizes (K, 1) and (K,
-        K), respectively.
-    """
-    variance = np.zeros((const.K, const.K))
-    mean = np.zeros((const.K, 1))
-    for vote in votes:
-      truth = vote['vote']
-      voter_id = vote['voter']
-      author_id = vote['reviewer']
-      rest = truth - self.alpha[voter_id].value - self.beta[review_id].value
-      rest -= self.gamma[(author_id, voter_id)].value if (author_id, voter_id) \
-          in self.gamma else 0
-      rest -= self.lambd[(author_id, voter_id)].value if (author_id, voter_id) \
-          in self.lambd else 0
-      variance += self.u[voter_id].value.dot(self.u[voter_id].value.T) / \
-          parameters.var_H.value
-      mean += rest * self.u[voter_id].value / parameters.var_H.value 
-    matrix_var_v = parameters.var_v.value * np.identity(const.K)
-    var_v_inv = np.linalg.pinv(matrix_var_v)
-    variance = np.linalg.pinv(var_v_inv + variance)
-    mean = variance.dot(var_v_inv.dot(parameters.V.value.dot(self.v[review_id]
-        .features)) + mean)
-    return mean, variance
-
-  def get_first_derivative_r(self, r, parameters):
-    size = len(self.gamma[self.gamma.iterkeys().next()].features)
-    der = [0] * size 
-    for author_voter in self.gamma:
-      p = self.gamma[author_voter].features
-      rp = r.T.dot(p)
-      for sample in self.gamma[author_voter].samples:
-        der = der + (sigmoid(rp) - self.gamma[author_voter].sample) * \
-            sigmoid_der1(rp) * p
-    der = 1 / parameters.var_gamma * der
-    return np.array(der)    
-
-  def get_second_derivative_r(self, r, parameters):
-    size = len(self.gamma[self.gamma.iterkeys().next()].features)
-    der = [[0] * size] * size 
-    for author_voter in self.gamma:
-      p = self.gamma[author_voter].features
-      rp = r.dot(p)
-      p = p.reshape(1, p.size)
-      for sample in self.gamma[author_voter].samples:
-        der = der + (sigmoid_der1(rp) ** 2 + 
-            (sigmoid(rp) - sample) * sigmoid_der2(rp)) * p.T.dot(p)
-    der = 1 / parameters.var_gamma * der
-    return der    
-
-
+          None. The instance is included in the dictionary of instances of this
+        object.
+    """ 
+    if entity_id in self.variables:
+      return 
+    self.variables[entity_id] = InteractionScalarVariable(self.name,
+        entity_id, self.e_type, features)

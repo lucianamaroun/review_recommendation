@@ -14,10 +14,10 @@ import numpy as np
       theta_0: value of initial theta.
       n_iter: number of iterations to perform.
 """
-def newton_raphson(fun, der, parameters, theta_0, n_iter=5):
+def newton_raphson(fun, der, variable_group, theta_0, n_iter=5):
   for _ in xrange(n_iter):
-    theta_n = theta_0 - np.linalg.pinv(der(theta_0, parameters)) \
-        .dot(fun(theta_0,parameters))
+    theta_n = theta_0 - np.linalg.pinv(der(theta_0, variable_group)) \
+        .dot(fun(theta_0, variable_group))
     theta_0 = theta_n
   return theta_n
 

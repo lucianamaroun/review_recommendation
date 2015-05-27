@@ -16,8 +16,9 @@ from src.author_voter_modeling import model_author_voter_similarity, \
     model_author_voter_connection
 from src.user_modeling import get_similar_users
 from src.parser import parse_trusts
-from cap.models2 import VariableGroup, Parameter 
-from cap import constants
+from cap.models2 import EntityScalarVariableGroup, EntityVectorVariableGroup, \
+    IndicatedInteractionScalarVariableGroup, Parameter 
+from cap import constants as const
 from cap.em import expectation_maximization
 from cap.map_features import map_review_features, map_author_features, \
     map_voter_features, map_users_sim_features, map_users_conn_features
@@ -26,30 +27,29 @@ from cap.map_features import map_review_features, map_author_features, \
 """ Creates empty latent variable groups with its corresponding parameters.
 
     Args:
-      reviews: dictionary of reviews' features indexed by id.
-      authors: dictionary of authors' features indexed by id.
-      reviews: dictionary of voters' features indexed by id.
-    
     Returns:
       A dictionary of VariableGroup objects indexed by names.
 """
 def create_variables():
+  var_H = Parameter('var_H', 1)
   variables = {
-    'alpha': VariableGroup('alpha', 1, Parameter('d', (9, 1)), 
-      Parameter('var_alpha', 1)),
-    'beta': VariableGroup('beta', 1, Parameter('g', (17, 1)), 
-      Parameter('var_beta', 1)),
-    'xi': VariableGroup('beta', 1, Parameter('b', (5, 1)), 
-      Parameter('var_beta', 1)),
-    'u': VariableGroup('u', (const.K, 1), Parameter('W', (const.K, 9)),
-    Parameter('var_u', 1)),
-    'v': VariableGroup('v', (const.K, 1), Paramete('V', (const.K, 17)),
-      Parameter('var_v', 1)),
-    'gamma': variablegroup('gamma', 1, parameter('r', (7, 1)),
-      parameter('var_gamma', 1),
-    'lambda': variablegroup('lambda', 1, parameter('h', (4, 1)),
-      parameter('var_lambda', 1)
+    'alpha': EntityScalarVariableGroup('alpha', 'voter', Parameter('d', (9, 1)), 
+        Parameter('var_alpha', 1), var_H),
+    'beta': EntityScalarVariableGroup('beta', 'review', Parameter('g', (17, 1)), 
+        Parameter('var_beta', 1), var_H),
+    'xi': EntityScalarVariableGroup('beta', 'reviewer', Parameter('b', (5, 1)), 
+        Parameter('var_beta', 1), var_H),
+    'u': EntityVectorVariableGroup('u', (const.K, 1), 'voter', Parameter('W',
+        (const.K, 9)), Parameter('var_u', 1), var_H),
+    'v': EntityVectorVariableGroup('v', (const.K, 1), 'review', Parameter('V', 
+        (const.K, 17)), Parameter('var_v', 1), var_H),
+    'gamma': IndicatedInteractionScalarVariableGroup('gamma', ('reviewer',
+        'voter'), Parameter('r', (7, 1)), Parameter('var_gamma', 1), var_H),
+    'lambda': IndicatedInteractionScalarVariableGroup('lambda', ('reviewer',
+        'voter'), Parameter('h', (4, 1)), Parameter('var_lambda', 1), var_H)
   }
+  variables['u'].set_pair_name('v')
+  variables['v'].set_pair_name('u')
   return variables
 
 
@@ -59,6 +59,13 @@ def populate_variables(variables, reviews, users, votes, users_sim, users_conn):
   
       Args:
         variables: a dictionary of VariableGroup objects indexed by group names.
+        reviews: dictionary of reviews' features indexed by id.
+        authors: dictionary of authors' features indexed by id.
+        votes: dictionary of votes' features indexed by id.
+        users_sim: dictionary of users similarity features indexed by a tuple
+          (author_id, voter_id)
+        users_conn: dictionary of users connection features indexed by a tuple
+          (author_id, voter_id)
 
       Returns:
         The same dictionary of VariableGroup objects with instances added.
@@ -106,7 +113,7 @@ def main():
   
   print 'Creating variables'
   variables = create_variables()
-  populate_variables(variables, reviews, users, sim_author_voter,
+  populate_variables(variables, reviews, users, train, sim_author_voter,
       conn_author_voter)
   
   print 'Running EM'

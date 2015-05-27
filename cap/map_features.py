@@ -1,4 +1,4 @@
-from numpy import reshape
+from numpy import reshape, array
 
 
 def map_review_features(review):
@@ -77,7 +77,8 @@ def map_users_conn_features(users_conn):
 
       Returns:
         A column array with features.
-  """ new_users_conn = array([users_conn['jacc_trustees'],
+  """
+  new_users_conn = array([users_conn['jacc_trustees'],
       users_conn['jacc_trustors'], users_conn['adamic_adar_trustees'],
       users_conn['adamic_adar_trustors']#, users_conn['katz']
       ]) 

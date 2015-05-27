@@ -2,7 +2,10 @@ from cap.e_step import perform_e_step
 from cap.m_step import perform_m_step
 
 
-def expectation_maximization(variables, parameters, votes):
+_N_ITERATIONS = 50
+
+
+def expectation_maximization(variables, votes):
   for _ in xrange(_N_ITERATIONS):
-    perform_e_step(variables, parameters, votes)
-    perform_m_step(variables, parameters)
+    perform_e_step(variables, votes)
+    perform_m_step(variables)
