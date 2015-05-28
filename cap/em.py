@@ -1,16 +1,11 @@
-from cap.gibbs import gibbs_sample
+from cap.e_step import perform_e_step
+from cap.m_step import perform_m_step
 
-_N_SAMPLES = 30
+
 _N_ITERATIONS = 50
 
-def e_step(variables, parameters, votes):
-  gibbs_sample(variables, parameters, votes, _N_SAMPLES)
-  variables.calculate_empiric_mean_and_variance()
 
-def m_step(variables, parameters):
-  parameters.adjust(variables) 
-
-def expectation_maximization(variables, parameters, votes):
+def expectation_maximization(variables, votes):
   for _ in xrange(_N_ITERATIONS):
-    e_step(variables, parameters, votes)
-    m_step(variables, parameters)
+    perform_e_step(variables, votes)
+    perform_m_step(variables)
