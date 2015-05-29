@@ -624,7 +624,7 @@ class EntityArrayVariable(ArrayVariable):
       rest = self.get_rest_value(variable_groups, vote)
       variance += 1/var_group.var_H.value
       mean += rest/var_group.var_H.value
-      pair_value = variable_groups[self.pair_name].get_instance_sampled_value(vote)
+      pair_value = variable_groups[self.pair_name].get_instance_sample_value(vote)
       variance += pair_value.dot(pair_value.T) / \
           var_group.var_H.value 
       mean += rest * pair_value / var_group.var_H.value
@@ -738,8 +738,8 @@ class Group(object):
       e_id = vote[self.e_type[0]], vote[self.e_type[1]]
     else:
       e_id = vote[self.e_type]
-    if e_id not in self.variables:
-      return 0.0 * self.variables.itervalues().next().value # any value
+    if e_id is None:
+      return self.variables[e_id].iter().next().value
     if not self.variables[e_id].samples:
       return self.variables[e_id].value # initial value
     return self.variables[e_id].samples[-1]

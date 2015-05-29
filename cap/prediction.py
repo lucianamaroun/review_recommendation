@@ -27,6 +27,8 @@ from cap.map_features import map_review_features, map_author_features, \
 """ Creates empty latent variable groups with its corresponding parameters.
 
     Args:
+      None.
+    
     Returns:
       A dictionary of VariableGroup objects indexed by names.
 """
