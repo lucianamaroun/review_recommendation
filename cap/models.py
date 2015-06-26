@@ -1,7 +1,8 @@
-from numpy import array, random, reshape, mean, std, identity
+import numpy as np
+from numpy import array, random, reshape, mean, std, identity, zeros, diagonal
 from numpy.linalg import pinv
 
-from cap import constants as const
+from cap import const
 from cap.aux import sigmoid, sigmoid_der1, sigmoid_der2
 from cap.newton_raphson import newton_raphson
 
@@ -68,9 +69,11 @@ class Value(object):
           None.
     """
     if (type(value) != type(self.value)):
-      raise TypeError('TypeError: value should have type %s' % type(self.value))
+      raise TypeError('TypeError: value should have type %s, not %s' % 
+          (type(self.value), type(value)))
     elif (hasattr(value, 'shape') and self.shape != value.shape):
-      raise TypeError('TypeError: value should have shape (%d, %d)' % self.shape)
+      raise TypeError('TypeError: value should have shape (%d, %d), not (%d, %d)' 
+          % (self.shape[0], self.shape[1], value.shape[0], value.shape[1]))
     self.value = value 
 
 
@@ -123,19 +126,20 @@ class ScalarVarianceParameter(Parameter):
     w_value = variable_group.weight_param.value
     sse = 0
     var_sum = 0
-    for v in variable_group.iter_instances():
-      reg = w.T.dot(v.features)
+    for v in variable_group.iter_variables():
+      reg = w_value.T.dot(v.features)[0,0]
       sse += (v.empiric_mean - reg)**2
       var_sum += v.empiric_var
-    self.update((sse + var_sum) / size)
+    self.update((float) (sse + var_sum) / size)
 
 
 class ArrayVarianceParameter(Parameter):
-  """ Class specifying a Array Parameter representing a distribution's
-      variance.
+  """ Class specifying a Parameter representing a distribution's
+      variance of an Array variable. A single value is used and the covariance
+      is obtained by multiplying by de identity.
   """
 
-  def __init__(self, name, shape):
+  def __init__(self, name):
     """ Constructor of ArrayVarianceParameter.
     
         Args:
@@ -145,7 +149,7 @@ class ArrayVarianceParameter(Parameter):
         Returns:
           None.
     """
-    super(ArrayVarianceParameter, self).__init__(name, shape)
+    super(ArrayVarianceParameter, self).__init__(name, 1)
   
   def optimize(self, variable_group):
     """ Optimizes the value of the parameter using the vector latent variables
@@ -165,12 +169,13 @@ class ArrayVarianceParameter(Parameter):
         Returns:
           None, but the value field of the parameter is updated.
     """
-    size = variable_group.get_size() * variable_group.get_shape()[0]
+    size = variable_group.get_size() * variable_group.iter_variables().next().\
+        value.shape[0]
     w_value = variable_group.weight_param.value
     sse = 0
     var_sum = 0
-    for v in variable_group.iter_instances():
-      reg = w.T.dot(v.features)
+    for v in variable_group.iter_variables():
+      reg = w_value.dot(v.features)
       sse += sum(((v.empiric_mean - reg)**2).reshape(-1).tolist())
       var_sum += sum(diagonal(v.empiric_var).tolist())
     self.update((sse + var_sum) / size)
@@ -211,12 +216,13 @@ class EntityScalarParameter(Parameter):
         Returns:
           None, but the value field of the parameter is updated.
     """
-    feat_matrix = array([v.features for v in variable_group.iter_instances()])
-    var_vec = array([v.value for v in variable_group.iter_instances()])
-    var_vec = reshape(var_vec, (var_vec.shape[0], 1))
+    feat_matrix = array([reshape(v.features, v.features.shape[0]) 
+        for v in variable_group.iter_variables()])
+    y = array([v.empiric_mean for v in variable_group.iter_variables()])
+    y = reshape(y, (y.shape[0], 1))
     inv = pinv(feat_matrix.T.dot(feat_matrix))
     new_value = pinv(feat_matrix.T.dot(feat_matrix)) \
-        .dot(feat_matrix.T.dot(var_vec)).T
+        .dot(feat_matrix.T.dot(y))
     self.update(new_value)
 
 
@@ -235,7 +241,7 @@ class EntityArrayParameter(Parameter):
         Returns:
           None.
     """
-    super(EntityScalarParameter, self).__init__(name, shape)
+    super(EntityArrayParameter, self).__init__(name, shape)
   
   def optimize(self, variable_group):
     """ Optimizes the value of the weight parameter using the vector latent
@@ -257,11 +263,12 @@ class EntityArrayParameter(Parameter):
         Returns:
           None, but the value field of the parameter is updated.
     """
-    feat_matrix = array([v.features for v in variable_group.iter_instances()])
-    var_vec = array([v.value.reshape(-1) for v in \
-        variable_group.iter_instances()])
+    feat_matrix = array([v.features.reshape(-1) for v in 
+        variable_group.iter_variables()])
+    y = array([v.empiric_mean.reshape(-1) for v in 
+        variable_group.iter_variables()])
     inv = pinv(feat_matrix.T.dot(feat_matrix))
-    new_value = var_vec.T.dot(feature_vec).dot(inv)
+    new_value = y.T.dot(feat_matrix).dot(inv)
     self.update(new_value)
 
 
@@ -281,7 +288,7 @@ class InteractionScalarParameter(Parameter):
         Returns:
           None.
     """
-    super(InteractionParameter, self).__init__(name, shape)
+    super(InteractionScalarParameter, self).__init__(name, shape)
   
   def optimize(self, variable_group):
     """ Optimizes the value of the weight parameter using the indicated scalar
@@ -327,10 +334,10 @@ class InteractionScalarParameter(Parameter):
           The derivative at point value.
     """
     size = variable_group.get_size()
-    der = [0] * size 
-    for variable in variable_group.iter_instances():
+    der = np.zeros(variable_group.weight_param.shape) 
+    for variable in variable_group.iter_variables():
       f = variable.features
-      dot = param_value.T.dot(f)
+      dot = value.T.dot(f)[0,0]
       for sample in variable.samples:
         der = der + (sigmoid(dot) - sample) * sigmoid_der1(dot) * f
     der = 1 / variable_group.var_param.value * der
@@ -350,20 +357,20 @@ class InteractionScalarParameter(Parameter):
             point.
           variable_group: variable group whose weight of the regression used for
             calculating the mean of the distribution is represented by this
-            paramter.
+            parameter.
     
         Returns:
           The derivative at point value.
     """
     size = variable_group.get_size()
-    der = [[0] * size] * size 
-    for variable in variable_group.iter_instances():
+    der = np.zeros((value.shape[0], value.shape[0])) 
+    for variable in variable_group.iter_variables():
       f = variable.features
-      dot = value.T.dot(f)
+      dot = value.T.dot(f)[0,0]
       for sample in variable.samples:
         der = der + (sigmoid_der1(dot) ** 2 + (sigmoid(dot) - sample) * \
             sigmoid_der2(dot)) * f.dot(f.T)
-    der = 1 / variable_group.var_param * der
+    der = 1 / variable_group.var_param.value * der
     return der 
 
 
@@ -409,12 +416,26 @@ class Variable(Value):
     """
     self.samples.append(value)
 
-  def get_rest_value(self, variable_groups, vote):
-    """ Gets the value of the variable of the truth minus all the other terms
+  def get_last_sample(self):
+    """ Gets the last sampled value of this variable.
+
+        Args:
+          None.
+
+        Returns:
+          A value of this variable, with its type.
+    """
+    if not self.samples:
+      return self.value # initial value
+    return self.samples[-1]
+
+
+  def get_rest_value(self, groups, vote):
+    """ Gets the value of the variable as the truth minus all the other terms
         except the one involving this variable, for a given vote.
 
         Args:
-          variable_groups: dictionary of variable_groups.
+          groups: dictionary of groups.
           vote: dictionary of a modeled vote.
 
         Returns:
@@ -423,17 +444,20 @@ class Variable(Value):
     """    
     truth = vote['vote']
     rest = truth
-    names = variable_groups.keys()[:]
-    self_var_group = variable_groups[self.name]
+    names = groups.keys()[:]
+    self_group = groups[self.name]
     for name in names:
-      if name == self.name or name == self_var_group.pair_name:
+      if name == self.name or name == self_group.pair_name:
         continue
-      var_group = variable_groups[name]
-      var_value = var_group.get_instance_sample_value(vote)
-      if var_group.pair_name:
-        pair_name = var_group.pair_name
-        pair_value = variable_groups[pair_name].get_instance_sample_value(vote)
-        rest = rest - var_value.T.dot(pair_value)
+      group = groups[name]
+      var = group.get_instance(vote)
+      if not var:
+        continue
+      var_value = var.get_last_sample()
+      if group.pair_name:
+        pair_name = group.pair_name
+        pair_value = groups[pair_name].get_instance(vote).get_last_sample()
+        rest = rest - var_value.T.dot(pair_value)[0,0]
         names.remove(pair_name) # pair is not processed again
       else:
         rest = rest - var_value
@@ -510,7 +534,10 @@ class ArrayVariable(Variable):
         Returns:
           None. The empiric mean field is updated in this object.
     """
-    self.empiric_mean = (1.0 / len(self.samples)) * sum(self.samples)
+    try:
+      self.empiric_mean = (1.0 / len(self.samples)) * sum(self.samples)
+    except Exception as e:
+      print self.samples
 
   def calculate_empiric_var(self):
     """ Calculates the empiric variance of this variable using the samples,
@@ -524,7 +551,8 @@ class ArrayVariable(Variable):
     """
     samples = array([s.reshape(-1) for s in self.samples])
     n_dim = samples.shape[1]
-    self.empiric_var = [std(samples[:,i], ddof=1) ** 2 for i in xrange(n_dim)]
+    self.empiric_var = reshape(array([[std(samples[:,i], ddof=1) ** 2 for i in
+        xrange(n_dim)]]), (n_dim, 1))
 
 
 class EntityScalarVariable(ScalarVariable):
@@ -547,7 +575,7 @@ class EntityScalarVariable(ScalarVariable):
     super(EntityScalarVariable, self).__init__(name, entity_id, e_type,
         features)
 
-  def get_cond_mean_and_var(self, variable_groups, votes):
+  def get_cond_mean_and_var(self, groups, votes):
     """ Calculates the conditional mean and variance of this variable.
     
         Observations:
@@ -555,7 +583,7 @@ class EntityScalarVariable(ScalarVariable):
         - The distribution is conditioned on all other latent variables.
 
         Args:
-          variable_groups: a dictionary of Group objects.
+          groups: a dictionary of Group objects.
           votes: the list of votes (training set).
 
         Returns:
@@ -564,21 +592,17 @@ class EntityScalarVariable(ScalarVariable):
     related_votes = [v for v in votes if v[self.e_type] == self.entity_id]
     variance = 0
     mean = 0
-    var_group = variable_groups[self.name]
+    var_group = groups[self.name]
     for vote in related_votes:
-      rest = self.get_rest_value(variable_groups, vote)
-      variance += 1/var_group.var_H.value
-      mean += rest/var_group.var_H.value
+      rest = self.get_rest_value(groups, vote)
+      variance += 1
+      mean += rest
+    variance /= var_group.var_H.value
+    mean /= var_group.var_H.value
     variance = 1 / (1/var_group.var_param.value + variance)
-    print var_group.weight_param.value.shape
-    print var_group.weight_param.value
-    print self.features.shape
-    print self.features
-    print var_group.var_param.value
-
-    mean += var_group.weight_param.value.T.dot(self.features) / \
+    dot = var_group.weight_param.value.T.dot(self.features) / \
         var_group.var_param.value
-    mean *= variance
+    mean = variance * (mean + dot[0,0])
     return mean, variance
 
 
@@ -601,7 +625,7 @@ class EntityArrayVariable(ArrayVariable):
     super(EntityArrayVariable, self).__init__(name, shape, entity_id, e_type,
         features)
 
-  def get_cond_mean_and_var(self, variable_groups, votes):
+  def get_cond_mean_and_var(self, groups, votes):
     """ Calculates the conditional mean and variance of this variable.
     
         Observations:
@@ -609,30 +633,28 @@ class EntityArrayVariable(ArrayVariable):
         - The distribution is conditioned on all other latent variables.
 
         Args:
-          variable_groups: a dictionary of Group objects.
+          groups: a dictionary of Group objects.
           votes: the list of votes (training set).
 
         Returns:
           A 2-tuple with the mean, a vector of size K, and variance, a
-        covariance matrix of size KxK.
+        covariance matrix of shape (K, K).
     """
     related_votes = [v for v in votes if v[self.e_type] == self.entity_id]
-    variance = np.zeros((const.K, const.K))
-    mean = np.zeros((const.K, 1))
-    var_group = variable_groups[self.name]
+    variance = zeros((const.K, const.K))
+    mean = zeros((const.K, 1))
+    var_group = groups[self.name]
+    pair_group = groups[var_group.pair_name]
+    var_matrix = var_group.var_param.value * identity(const.K)
+    inv_var = pinv(var_matrix)
     for vote in related_votes:
-      rest = self.get_rest_value(variable_groups, vote)
-      variance += 1/var_group.var_H.value
-      mean += rest/var_group.var_H.value
-      pair_value = variable_groups[self.pair_name].get_instance_sample_value(vote)
-      variance += pair_value.dot(pair_value.T) / \
-          var_group.var_H.value 
-      mean += rest * pair_value / var_group.var_H.value
-    matrix_var_u = var_group.var_param.value * identity(const.K)
-    var_u_inv = pinv(matrix_var_u)
-    variance = pinv(var_u_inv + variance)
-    mean = variance.dot(var_u_inv.dot(var_group.weight_param.value \
-        .dot(self.features) + mean))
+      rest = self.get_rest_value(groups, vote)
+      pair_value = pair_group.get_instance(vote).get_last_sample()
+      variance += pair_value.dot(pair_value.T)
+      mean += rest * pair_value
+    variance = pinv(variance / var_group.var_H.value + inv_var)
+    dot = inv_var.dot(var_group.weight_param.value).dot(self.features)
+    mean = variance.dot(dot + mean / var_group.var_H.value)
     return mean, variance
 
 
@@ -653,7 +675,7 @@ class InteractionScalarVariable(ScalarVariable):
     super(InteractionScalarVariable, self).__init__(name, entity_id,
         e_type, features)
 
-  def get_cond_mean_and_var(self, variable_groups, votes):
+  def get_cond_mean_and_var(self, groups, votes):
     """ Calculates the conditional mean and variance of this variable.
     
         Observations:
@@ -661,22 +683,23 @@ class InteractionScalarVariable(ScalarVariable):
         - The distribution is conditioned on all other latent variables.
 
         Args:
-          variable_groups: a dictionary of Group objects.
+          groups: a dictionary of Group objects.
           votes: the list of votes (training set).
 
         Returns:
           A 2-tuple with the mean and variance, both float values.
     """
-    related_votes = [v for v in votes if v[self.e_type] == self.entity_id]
+    related_votes = [v for v in votes if v[self.e_type[0]] == self.entity_id[0]
+        and v[self.e_type[1]] == self.entity_id[1]]
     variance = 0
     mean = 0
-    var_group = variable_groups[self.name]
+    var_group = groups[self.name]
     for vote in related_votes:
-      rest = self.get_rest_value(variable_groups, vote)
+      rest = self.get_rest_value(groups, vote)
       variance += 1/var_group.var_H.value
       mean += rest/var_group.var_H.value
     variance = 1 / (1/var_group.var_param.value + variance)
-    mean += sigmoid(var_group.weight_param.value.T.dot(self.features)) \
+    mean += sigmoid(var_group.weight_param.value.T.dot(self.features)[0,0]) \
         / var_group.var_param.value
     mean *= variance
     return mean, variance
@@ -709,7 +732,7 @@ class Group(object):
     self.variables = {} 
     self.pair_name = None
   
-  def iter_instances(self):
+  def iter_variables(self):
     """ Iterates over the instances of this variable.
     
         Args:
@@ -721,8 +744,8 @@ class Group(object):
     for variable in self.variables.itervalues():
       yield variable 
 
-  def get_instance_sample_value(self, vote):
-    """ Gets the last sampled value of an instance.
+  def get_instance(self, vote):
+    """ Gets an instance variable associated to certain vote.
 
         Observations:
         - The instance is obtained through the entity value of this variable
@@ -739,10 +762,10 @@ class Group(object):
     else:
       e_id = vote[self.e_type]
     if e_id is None:
-      return self.variables[e_id].iter().next().value
-    if not self.variables[e_id].samples:
-      return self.variables[e_id].value # initial value
-    return self.variables[e_id].samples[-1]
+      return self.variables[e_id].iter().next()
+    if e_id not in self.variables:
+      return None
+    return self.variables[e_id]
 
   def get_size(self):
     """ Gets the number of instances of this variable.

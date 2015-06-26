@@ -1,7 +1,7 @@
-def perform_m_step(variables):
-  optimize_parameters(variables)
+def perform_m_step(groups):
+  optimize_parameters(groups)
   
-def optimize_parameters(variables):
-  for variable_group in variables.itervalues():
-    variable_group.weight_param.optimize(variable_group.iter_instances())
-    variable_group.var_param.optimize(variable_group.iter_instances())
+def optimize_parameters(groups):
+  for group in groups.itervalues():
+    group.weight_param.optimize(group.iter_variables())
+    group.var_param.optimize(group.iter_variables())
