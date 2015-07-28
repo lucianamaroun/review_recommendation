@@ -134,12 +134,12 @@ class ScalarVarianceParameter(Parameter):
 
 
 class PredictionVarianceParameter(ScalarVarianceParameter):
-  """ Class specifying a Scalar Parameter representing a distribution's
-      variance.  
+  """ Class specifying the Prediction Parameter representing the estimated value
+      distribution's variance.  
   """
 
   def __init__(self, name):
-    """ Constructor of ScalarVarianceParameter. 
+    """ Constructor of PredictionVarianceParameter. 
 
         Args:
           name: string with the name of the parameter.

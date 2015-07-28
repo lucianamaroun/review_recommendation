@@ -34,7 +34,7 @@ from cap.map_features import map_review_features, map_author_features, \
       A dictionary of Group objects indexed by names.
 """
 def create_variables():
-  var_H = ScalarVarianceParameter('var_H')
+  var_H = PredictionVarianceParameter('var_H')
   variables = {
     'alpha': EntityScalarGroup('alpha', 'voter', 
         EntityScalarParameter('d', (9, 1)), 
