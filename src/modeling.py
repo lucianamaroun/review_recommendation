@@ -18,8 +18,8 @@ from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 
 _NUM_THREADS = 12
-_SAMPLE = False
-_SAMPLE_RATIO = 1
+_SAMPLE = True 
+_SAMPLE_RATIO = 0.01
 _TRAIN_FILE = '/var/tmp/luciana/train.csv'
 _TEST_FILE = '/var/tmp/luciana/test.csv'
 
@@ -38,7 +38,7 @@ def model():
   import pickle
   print 'Getting trust'
   trusts = parser.parse_trusts()
-  pickle.dump(trusts, open('pkl/trusts.pkl', 'w'))
+  pickle.dump(trusts, open('pkl/trusts%d.pkl' % (_SAMPLE_RATIO * 100), 'w'))
 
   print 'Modeling reviews'
   if _SAMPLE:
@@ -46,16 +46,16 @@ def model():
     reviews = model_reviews_parallel(_NUM_THREADS, sel_reviews)
   else:
     reviews = model_reviews_parallel(_NUM_THREADS)
-  pickle.dump(reviews, open('pkl/reviews-all.pkl', 'w'))
+  pickle.dump(reviews, open('pkl/reviews%d.pkl' % (_SAMPLE_RATIO * 100), 'w'))
 
   print 'Split train and test'
   train, test = split_votes(reviews)
-  pickle.dump(train, open('pkl/train-all.pkl', 'w'))
-  pickle.dump(test, open('pkl/test-all.pkl', 'w'))
+  pickle.dump(train, open('pkl/train%d.pkl' % (_SAMPLE_RATIO * 100), 'w'))
+  pickle.dump(test, open('pkl/test%d.pkl' % (_SAMPLE_RATIO * 100), 'w'))
 
   print 'Modeling users'
   users = model_users(reviews, train, trusts)
-  pickle.dump(users, open('pkl/users-all.pkl', 'w'))
+  pickle.dump(users, open('pkl/users%d.pkl' % (_SAMPLE_RATIO * 100), 'w'))
 
   print 'Outputting'
   output_model(train, test, reviews, users, trusts)
