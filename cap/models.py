@@ -133,6 +133,65 @@ class ScalarVarianceParameter(Parameter):
     self.update((float) (sse + var_sum) / size)
 
 
+class PredictionVarianceParameter(ScalarVarianceParameter):
+  """ Class specifying a Scalar Parameter representing a distribution's
+      variance.  
+  """
+
+  def __init__(self, name):
+    """ Constructor of ScalarVarianceParameter. 
+
+        Args:
+          name: string with the name of the parameter.
+
+        Returns:
+          None.
+    """
+    super(PredictionVarianceParameter, self).__init__(name)
+  
+  def optimize(self, groups, votes):
+    """ Optimizes the value of the parameter using the prediction and truth
+        values.
+   
+        Observation: The latent variables are considered to be uncorrelated,
+          implying that the prediction empiric variance is the sum of latent
+          variables empiric variances.
+    
+        Args:
+          gropus: list of variable group which determines the predicted value.
+           
+        Returns:
+          None, but the value field of the parameter is updated.
+    """
+    size = groups[0].get_size()
+    sse = 0
+    var_sum = 0
+    for vote in votes:
+      truth = vote['vote']
+      pred = 0
+      for g in groups.itervalues():
+        inst = g.get_instance(vote)
+        if g.pair_name and g.name < g.pair_name:
+          pair_inst = groups[g.pair_name].get_instance(vote)
+          pred += inst.empiric_mean.T.dot(pair_inst.empiric_mean)[0,0]
+          # V(XY) = V(X)V(Y) + V(X)E(Y)² + V(Y)E(X)²
+          # dot product is the sum of variable products
+          # dimensions are considered to be uncorrelated
+          prod_var = 0
+          for i in (0, const.K):
+            var_x = inst.diagonal(empiric_var).tolist()[i]
+            var_y = pair_inst.diagonal(empiric_var).tolist()[i]
+            prod_var += var_x * var_y
+            prod_var += var_x * pair_inst.empiric_mean.reshape(-1).tolist()[i]
+            prod_var += var_y * inst.empiric_mean.reshape(-1).tolist()[i]
+          var_sum += prod_var
+        else:
+          pred += inst.empiric_mean
+          var_sum += inst.empiric_var
+        sse += (truth - pred)**2
+    self.update((float) (sse + var_sum) / size)
+
+
 class ArrayVarianceParameter(Parameter):
   """ Class specifying a Parameter representing a distribution's
       variance of an Array variable. A single value is used and the covariance
@@ -534,10 +593,7 @@ class ArrayVariable(Variable):
         Returns:
           None. The empiric mean field is updated in this object.
     """
-    try:
-      self.empiric_mean = (1.0 / len(self.samples)) * sum(self.samples)
-    except Exception as e:
-      print self.samples
+    self.empiric_mean = (1.0 / len(self.samples)) * sum(self.samples)
 
   def calculate_empiric_var(self):
     """ Calculates the empiric variance of this variable using the samples,

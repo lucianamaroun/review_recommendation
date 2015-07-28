@@ -27,4 +27,6 @@ def gibbs_sample(groups, votes, n_samples):
           variable.add_sample(normal(mean, sqrt(var)))
         if isinstance(variable, ArrayVariable):
           mean, cov = variable.get_cond_mean_and_var(groups, votes)
-          variable.add_sample(multivariate_normal(mean, cov))
+          mean = mean.reshape(-1)
+          sample = multivariate_normal(mean, cov).reshape(mean.size, 1)
+          variable.add_sample(sample)

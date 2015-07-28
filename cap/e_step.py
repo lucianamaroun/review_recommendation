@@ -19,6 +19,6 @@ def calculate_empiric_mean_and_variance(groups):
       object.
   """
   for group in groups.itervalues():
-    for variable in group.iter_instances():
+    for variable in group.iter_variables():
       variable.calculate_empiric_mean()
       variable.calculate_empiric_var()

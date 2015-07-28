@@ -8,4 +8,4 @@ _N_ITERATIONS = 50
 def expectation_maximization(variables, votes):
   for _ in xrange(_N_ITERATIONS):
     perform_e_step(variables, votes)
-    perform_m_step(variables)
+    perform_m_step(variables, votes)

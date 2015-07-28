@@ -16,8 +16,14 @@ import numpy as np
 """
 def newton_raphson(fun, der, variable_group, theta_0, n_iter=5):
   for _ in xrange(n_iter):
+    print theta_0
+    print der
+    print der(theta_0, variable_group)
+    print fun
+    print fun(theta_0, variable_group)
     theta_n = theta_0 - np.linalg.pinv(der(theta_0, variable_group)) \
         .dot(fun(theta_0, variable_group))
     theta_0 = theta_n
+    print theta_0
   return theta_n
 

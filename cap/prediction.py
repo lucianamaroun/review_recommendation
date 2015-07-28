@@ -17,7 +17,8 @@ from src.author_voter_modeling import model_author_voter_similarity, \
 from src.user_modeling import get_similar_users
 from src.parser import parse_trusts
 from cap.models import EntityScalarGroup, EntityArrayGroup, \
-    InteractionScalarGroup, Parameter 
+    InteractionScalarGroup, EntityScalarParameter, EntityArrayParameter, \
+    InteractionScalarParameter, ScalarVarianceParameter, ArrayVarianceParameter
 from cap import const
 from cap.em import expectation_maximization
 from cap.map_features import map_review_features, map_author_features, \
@@ -33,22 +34,29 @@ from cap.map_features import map_review_features, map_author_features, \
       A dictionary of Group objects indexed by names.
 """
 def create_variables():
-  var_H = Parameter('var_H', 1)
+  var_H = ScalarVarianceParameter('var_H')
   variables = {
-    'alpha': EntityScalarGroup('alpha', 'voter', Parameter('d', (9, 1)), 
-        Parameter('var_alpha', 1), var_H),
-    'beta': EntityScalarGroup('beta', 'review', Parameter('g', (17, 1)), 
-        Parameter('var_beta', 1), var_H),
-    'xi': EntityScalarGroup('beta', 'reviewer', Parameter('b', (5, 1)), 
-        Parameter('var_beta', 1), var_H),
-    'u': EntityArrayGroup('u', (const.K, 1), 'voter', Parameter('W',
-        (const.K, 9)), Parameter('var_u', 1), var_H),
-    'v': EntityArrayGroup('v', (const.K, 1), 'review', Parameter('V', 
-        (const.K, 17)), Parameter('var_v', 1), var_H),
-    'gamma': InteractionScalarGroup('gamma', ('reviewer',
-        'voter'), Parameter('r', (7, 1)), Parameter('var_gamma', 1), var_H),
-    'lambda': InteractionScalarGroup('lambda', ('reviewer',
-        'voter'), Parameter('h', (4, 1)), Parameter('var_lambda', 1), var_H)
+    'alpha': EntityScalarGroup('alpha', 'voter', 
+        EntityScalarParameter('d', (9, 1)), 
+        ScalarVarianceParameter('var_alpha'), var_H),
+    'beta': EntityScalarGroup('beta', 'review', 
+        EntityScalarParameter('g', (17, 1)), 
+        ScalarVarianceParameter('var_beta'), var_H),
+    'xi': EntityScalarGroup('xi', 'reviewer', 
+        EntityScalarParameter('b', (5, 1)), 
+        ScalarVarianceParameter('var_xi'), var_H),
+    'u': EntityArrayGroup('u', (const.K, 1), 'voter', 
+        EntityArrayParameter('W', (const.K, 9)),
+        ArrayVarianceParameter('var_u'), var_H),
+    'v': EntityArrayGroup('v', (const.K, 1), 'review', 
+        EntityArrayParameter('V', (const.K, 17)),
+        ArrayVarianceParameter('var_v'), var_H),
+    'gamma': InteractionScalarGroup('gamma', ('reviewer', 'voter'),
+        InteractionScalarParameter('r', (7, 1)), 
+        ScalarVarianceParameter('var_gamma'), var_H),
+    'lambda': InteractionScalarGroup('lambda', ('reviewer', 'voter'),
+        InteractionScalarParameter('h', (4, 1)), 
+        ScalarVarianceParameter('var_lambda'), var_H)
   }
   variables['u'].set_pair_name('v')
   variables['v'].set_pair_name('u')
@@ -78,7 +86,7 @@ def populate_variables(variables, reviews, users, votes, users_sim, users_conn):
     variables['beta'].add_instance(r_id, map_review_features(reviews[r_id]))
     variables['xi'].add_instance(a_id, map_author_features(users[a_id]))
     variables['u'].add_instance(v_id, map_voter_features(users[v_id]))
-    variables['v'].add_instance(a_id, map_review_features(reviews[r_id]))
+    variables['v'].add_instance(r_id, map_review_features(reviews[r_id]))
   for author_voter, features in users_sim.items():
     variables['gamma'].add_instance(author_voter, 
         map_users_sim_features(features))
@@ -87,31 +95,50 @@ def populate_variables(variables, reviews, users, votes, users_sim, users_conn):
         map_users_conn_features(features))
   return variables
 
+
+def calculate_predictions(groups, test):
+  pred = []
+  for vote in test:
+    prediction = groups['alpha'].get_instance(vote).value + \
+      groups['beta'].get_instance(vote).value + \
+      groups['xi'].get_instance(vote).value + \
+      groups['u'].get_instance(vote).value.T \
+      .dot(groups['v'].get_instance(vote).value)[0,0]
+    if (groups['lambda'].has(vote)):
+      prediction += groups['lambda'].get_instance(vote).value
+    if (groups['gamma'].has(vote)):
+      prediction += groups['gamma'].get_instance(vote).value
+    pred.append(prediction)
+  return pred
+
+
 def main():
   import pickle
   print 'Reading pickles'
- # reviews, users, _, train, _ = model()
- # pickle.dump(reviews, open('pkl/reviews.pkl', 'w'))
- # pickle.dump(users, open('pkl/users.pkl', 'w'))
- # pickle.dump(train, open('pkl/train.pkl', 'w'))
-  reviews = pickle.load(open('pkl/reviews.pkl', 'r'))
-  users = pickle.load(open('pkl/users.pkl', 'r'))
-  train = pickle.load(open('pkl/train.pkl', 'r'))
+  reviews, users, _, train, test = model()
+  pickle.dump(reviews, open('pkl/cap_reviews.pkl', 'w'))
+  pickle.dump(users, open('pkl/cap_users.pkl', 'w'))
+  pickle.dump(train, open('pkl/cap_train.pkl', 'w'))
+  pickle.dump(test, open('pkl/cap_test.pkl', 'w'))
+ # reviews = pickle.load(open('pkl/reviews.pkl', 'r'))
+ # users = pickle.load(open('pkl/users.pkl', 'r'))
+ # train = pickle.load(open('pkl/train.pkl', 'r'))
+ # test = pickle.load(open('pkl/test.pkl', 'r'))
   
- # similar = get_similar_users(users)
- # trusts = parse_trusts()
- # pickle.dump(similar, open('pkl/similar.pkl', 'w'))
- # pickle.dump(trusts, open('pkl/trusts.pkl', 'w'))
-  similar = pickle.load(open('pkl/similar.pkl', 'r'))
-  trusts = pickle.load(open('pkl/trusts.pkl', 'r'))
+  similar = get_similar_users(users)
+  trusts = parse_trusts()
+  pickle.dump(similar, open('pkl/cap_similar.pkl', 'w'))
+  pickle.dump(trusts, open('pkl/cap_trusts.pkl', 'w'))
+ # similar = pickle.load(open('pkl/similar.pkl', 'r'))
+ # trusts = pickle.load(open('pkl/trusts.pkl', 'r'))
   
- # print 'Modeling interaction'
- # sim_author_voter = model_author_voter_similarity(train, users, similar)
- # pickle.dump(sim_author_voter, open('pkl/sim_author_voter.pkl', 'w'))
-  sim_author_voter = pickle.load(open('pkl/sim_author_voter.pkl', 'r'))
- # conn_author_voter = model_author_voter_connection(train, users, trusts)
- # pickle.dump(conn_author_voter, open('pkl/conn_author_voter.pkl', 'w'))
-  conn_author_voter = pickle.load(open('pkl/conn_author_voter.pkl', 'r'))
+  print 'Modeling interaction'
+  sim_author_voter = model_author_voter_similarity(train, users, similar)
+  pickle.dump(sim_author_voter, open('pkl/cap_sim_author_voter2.pkl', 'w'))
+ # sim_author_voter = pickle.load(open('pkl/sim_author_voter.pkl', 'r'))
+  conn_author_voter = model_author_voter_connection(train, users, trusts)
+  pickle.dump(conn_author_voter, open('pkl/cap_conn_author_voter2.pkl', 'w'))
+ # conn_author_voter = pickle.load(open('pkl/conn_author_voter.pkl', 'r'))
   
   print 'Creating variables'
   variables = create_variables()
@@ -120,6 +147,13 @@ def main():
   
   print 'Running EM'
   expectation_maximization(variables, train)
+
+  print 'Calculate Predictions'
+  pred = calculate_predictions(variables, test)
+  sse = sum([(pred[i] - test[i]['truth']) ** 2 for i in xrange(len(test))])
+  rmse = sqrt(sse/len(test))
+
+  print 'RMSE: %s' % rmse
 
 if __name__ == '__main__':
   main() 
