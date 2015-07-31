@@ -163,7 +163,7 @@ class PredictionVarianceParameter(ScalarVarianceParameter):
         Returns:
           None, but the value field of the parameter is updated.
     """
-    size = groups[0].get_size()
+    size = groups.itervalues().next().get_size()
     sse = 0
     var_sum = 0
     for vote in votes:
@@ -171,21 +171,23 @@ class PredictionVarianceParameter(ScalarVarianceParameter):
       pred = 0
       for g in groups.itervalues():
         inst = g.get_instance(vote)
-        if g.pair_name and g.name < g.pair_name:
+        if g.pair_name:
+          if g.name > g.pair_name:
+            continue
           pair_inst = groups[g.pair_name].get_instance(vote)
           pred += inst.empiric_mean.T.dot(pair_inst.empiric_mean)[0,0]
-          # V(XY) = V(X)V(Y) + V(X)E(Y)² + V(Y)E(X)²
+          # V(XY) = V(X)V(Y) + V(X)E(Y)^2 + V(Y)E(X)^2
           # dot product is the sum of variable products
           # dimensions are considered to be uncorrelated
           prod_var = 0
-          for i in (0, const.K):
-            var_x = inst.diagonal(empiric_var).tolist()[i]
-            var_y = pair_inst.diagonal(empiric_var).tolist()[i]
+          for i in xrange(const.K):
+            var_x = inst.empiric_var.reshape(-1).tolist()[i]
+            var_y = pair_inst.empiric_var.reshape(-1).tolist()[i]
             prod_var += var_x * var_y
             prod_var += var_x * pair_inst.empiric_mean.reshape(-1).tolist()[i]
             prod_var += var_y * inst.empiric_mean.reshape(-1).tolist()[i]
           var_sum += prod_var
-        else:
+        elif inst:
           pred += inst.empiric_mean
           var_sum += inst.empiric_var
         sse += (truth - pred)**2
@@ -398,7 +400,14 @@ class InteractionScalarParameter(Parameter):
       f = variable.features
       dot = value.T.dot(f)[0,0]
       for sample in variable.samples:
-        der = der + (sigmoid(dot) - sample) * sigmoid_der1(dot) * f
+        try:
+          der = der + (sigmoid(dot) - sample) * sigmoid_der1(dot) * f
+        except:
+          print dot
+          print sigmoid(dot)
+          print der
+          import sys
+          sys.exit()
     der = 1 / variable_group.var_param.value * der
     return der
 
@@ -427,8 +436,28 @@ class InteractionScalarParameter(Parameter):
       f = variable.features
       dot = value.T.dot(f)[0,0]
       for sample in variable.samples:
-        der = der + (sigmoid_der1(dot) ** 2 + (sigmoid(dot) - sample) * \
-            sigmoid_der2(dot)) * f.dot(f.T)
+        try:
+          der = der + (sigmoid_der1(dot) ** 2 + (sigmoid(dot) - sample) * \
+              sigmoid_der2(dot)) * f.dot(f.T)
+        except:
+          print "value ",
+          print value
+          print "f ",
+          print f
+          print "dot ",
+          print dot
+          print "sigmoid ",
+          print sigmoid(dot)
+          print "sigmoid_der1 ",
+          print sigmoid_der1(dot)
+          print "sigmoid_der2 ",
+          print sigmoid_der2(dot)
+          print "sample ",
+          print sample
+          print "f dot ",
+          print f.dot(f.T)
+          import sys
+          sys.exit()
     der = 1 / variable_group.var_param.value * der
     return der 
 
@@ -730,7 +759,7 @@ class InteractionScalarVariable(ScalarVariable):
     """
     super(InteractionScalarVariable, self).__init__(name, entity_id,
         e_type, features)
-
+ 
   def get_cond_mean_and_var(self, groups, votes):
     """ Calculates the conditional mean and variance of this variable.
     
@@ -822,6 +851,27 @@ class Group(object):
     if e_id not in self.variables:
       return None
     return self.variables[e_id]
+  
+  def contains(self, vote):
+    """ Checks if the entity of this variable associated with given vote has a
+        defined variable, which is true if the indicative value multiplying the
+        variable is 1.
+
+        Args:
+          vote: the vote with possibly has a variable associated.
+
+        Returns:
+          True if the variable is defined or False, otherwise"""
+    if type(self.e_type) is tuple:
+      e_id = vote[self.e_type[0]], vote[self.e_type[1]]
+    else:
+      e_id = vote[self.e_type]
+    if e_id is None:
+      return self.variables[e_id].iter().next()
+    if e_id not in self.variables:
+      return None
+    return e_id in self.variables
+
 
   def get_size(self):
     """ Gets the number of instances of this variable.

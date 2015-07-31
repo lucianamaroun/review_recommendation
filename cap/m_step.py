@@ -1,9 +1,8 @@
-def perform_m_step(groups):
-  optimize_parameters(groups)
+def perform_m_step(groups, votes):
+  optimize_parameters(groups, votes)
   
 def optimize_parameters(groups, votes):
   for group in groups.itervalues():
     group.weight_param.optimize(group)
     group.var_param.optimize(group)
-    h_group.
-  groups[0].var_H.optimize(groups, vote)
+  groups.itervalues().next().var_H.optimize(groups, votes)

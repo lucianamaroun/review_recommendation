@@ -17,9 +17,9 @@ from src.data_division import split_votes
 from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 
-_NUM_THREADS = 12
+_NUM_THREADS = 6 
 _SAMPLE = True 
-_SAMPLE_RATIO = 0.01
+_SAMPLE_RATIO = 0.001
 _TRAIN_FILE = '/var/tmp/luciana/train.csv'
 _TEST_FILE = '/var/tmp/luciana/test.csv'
 
