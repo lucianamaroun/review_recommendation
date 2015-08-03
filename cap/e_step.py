@@ -1,12 +1,8 @@
 from cap.gibbs import gibbs_sample
 
-
-_N_SAMPLES = 30
-
-
-def perform_e_step(groups, votes):
+def perform_e_step(groups, votes, n_samples):
   print "Gibbs Sampling"
-  gibbs_sample(groups, votes, _N_SAMPLES)
+  gibbs_sample(groups, votes, n_samples)
   print "Calculation of Empiric Stats"
   calculate_empiric_mean_and_variance(groups)
 

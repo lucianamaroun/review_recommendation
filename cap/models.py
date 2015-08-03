@@ -372,8 +372,8 @@ class InteractionScalarParameter(Parameter):
           None, but the value field of the parameter is updated.
     """
     new_value = newton_raphson(self.get_derivative_1, self.get_derivative_2, 
-        variable_group, self.value)
-    self.update(new_value) 
+        variable_group, self.value.reshape(-1))
+    self.update(new_value.reshape(self.value.shape)) 
 
   def get_derivative_1(self, value, variable_group):
     """ Gets the first derivative of the expectation with respect to the
@@ -394,21 +394,13 @@ class InteractionScalarParameter(Parameter):
         Returns:
           The derivative at point value.
     """
-    size = variable_group.get_size()
-    der = np.zeros(variable_group.weight_param.shape) 
+    der = np.zeros(value.size)
     for variable in variable_group.iter_variables():
-      f = variable.features
-      dot = value.T.dot(f)[0,0]
+      f = variable.features.reshape(-1)
+      dot = value.dot(f)
       for sample in variable.samples:
-        try:
-          der = der + (sigmoid(dot) - sample) * sigmoid_der1(dot) * f
-        except:
-          print dot
-          print sigmoid(dot)
-          print der
-          import sys
-          sys.exit()
-    der = 1 / variable_group.var_param.value * der
+        der = der + (sigmoid(dot) - sample) * sigmoid_der1(dot) * f
+    der = (1.0 / variable_group.var_param.value) * der
     return der
 
   def get_derivative_2(self, value, variable_group):
@@ -430,35 +422,14 @@ class InteractionScalarParameter(Parameter):
         Returns:
           The derivative at point value.
     """
-    size = variable_group.get_size()
     der = np.zeros((value.shape[0], value.shape[0])) 
     for variable in variable_group.iter_variables():
       f = variable.features
-      dot = value.T.dot(f)[0,0]
+      dot = self.value.T.dot(f)[0,0]
       for sample in variable.samples:
-        try:
-          der = der + (sigmoid_der1(dot) ** 2 + (sigmoid(dot) - sample) * \
-              sigmoid_der2(dot)) * f.dot(f.T)
-        except:
-          print "value ",
-          print value
-          print "f ",
-          print f
-          print "dot ",
-          print dot
-          print "sigmoid ",
-          print sigmoid(dot)
-          print "sigmoid_der1 ",
-          print sigmoid_der1(dot)
-          print "sigmoid_der2 ",
-          print sigmoid_der2(dot)
-          print "sample ",
-          print sample
-          print "f dot ",
-          print f.dot(f.T)
-          import sys
-          sys.exit()
-    der = 1 / variable_group.var_param.value * der
+        der = der + (sigmoid_der1(dot) ** 2 + (sigmoid(dot) - sample) * \
+            sigmoid_der2(dot)) * f.dot(f.T)
+    der = (1.0 / variable_group.var_param.value) * der
     return der 
 
 
@@ -543,10 +514,11 @@ class Variable(Value):
         continue
       var_value = var.get_last_sample()
       if group.pair_name:
+        if name > group.pair_name:
+          continue
         pair_name = group.pair_name
         pair_value = groups[pair_name].get_instance(vote).get_last_sample()
         rest = rest - var_value.T.dot(pair_value)[0,0]
-        names.remove(pair_name) # pair is not processed again
       else:
         rest = rest - var_value
     return rest
@@ -675,19 +647,19 @@ class EntityScalarVariable(ScalarVariable):
           A 2-tuple with the mean and variance, both floats.
     """
     related_votes = [v for v in votes if v[self.e_type] == self.entity_id]
-    variance = 0
-    mean = 0
+    variance = 0.0
+    mean = 0.0
     var_group = groups[self.name]
     for vote in related_votes:
       rest = self.get_rest_value(groups, vote)
-      variance += 1
       mean += rest
+      variance += 1.0
     variance /= var_group.var_H.value
     mean /= var_group.var_H.value
-    variance = 1 / (1/var_group.var_param.value + variance)
-    dot = var_group.weight_param.value.T.dot(self.features) / \
+    variance = 1.0 / (1.0/var_group.var_param.value + variance)
+    dot = var_group.weight_param.value.T.dot(self.features)[0,0] / \
         var_group.var_param.value
-    mean = variance * (mean + dot[0,0])
+    mean = variance * (mean + dot)
     return mean, variance
 
 
@@ -774,16 +746,19 @@ class InteractionScalarVariable(ScalarVariable):
         Returns:
           A 2-tuple with the mean and variance, both float values.
     """
+    # use index to find related votes
     related_votes = [v for v in votes if v[self.e_type[0]] == self.entity_id[0]
         and v[self.e_type[1]] == self.entity_id[1]]
-    variance = 0
-    mean = 0
+    variance = 0.0
+    mean = 0.0
     var_group = groups[self.name]
     for vote in related_votes:
       rest = self.get_rest_value(groups, vote)
-      variance += 1/var_group.var_H.value
-      mean += rest/var_group.var_H.value
-    variance = 1 / (1/var_group.var_param.value + variance)
+      variance += 1.0
+      mean += rest
+    mean /= var_group.var_H.value
+    variance /= var_group.var_H.value
+    variance = 1.0 / (1.0/var_group.var_param.value + variance)
     mean += sigmoid(var_group.weight_param.value.T.dot(self.features)[0,0]) \
         / var_group.var_param.value
     mean *= variance

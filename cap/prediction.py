@@ -128,11 +128,12 @@ def calculate_predictions(groups, test, reviews, users, users_sim, users_conn):
     if not gamma and (a_id, v_id) in users_sim:
       gamma = groups['gamma'].weight_param.value.T \
       .dot(map_users_sim_features(users_sim[(a_id, v_id)]))[0,0]
-    lambd = groups['lambda'].get_instance(vote).value if \
-        groups['lambda'].contains(vote) else 0
-    if not lambd and (a_id, v_id) in users_conn:
-      lambd = groups['lambda'].weight_param.value.T \
-      .dot(map_users_conn_features(users_conn[(a_id, v_id)]))[0,0]
+    lambd = 0
+   # lambd = groups['lambda'].get_instance(vote).value if \
+   #     groups['lambda'].contains(vote) else 0
+   # if not lambd and (a_id, v_id) in users_conn:
+   #   lambd = groups['lambda'].weight_param.value.T \
+   #   .dot(map_users_conn_features(users_conn[(a_id, v_id)]))[0,0]
     prediction = u.T.dot(v)[0,0] + alfa + beta + xi + gamma + lambd
     pred.append(prediction)
   return pred
@@ -167,21 +168,20 @@ def main():
   conn_author_voter = pickle.load(open('pkl/cap_conn_author_voter22.pkl', 'r'))
   
   print 'Creating variables'
-  # variables = create_variables()
-  # populate_variables(variables, reviews, users, train, sim_author_voter,
-  #    conn_author_voter)
+  variables = create_variables()
+  populate_variables(variables, reviews, users, train, sim_author_voter,
+      conn_author_voter)
   
   print 'Running EM'
-  # expectation_maximization(variables, train)
-  # pickle.dump(variables, open('pkl/cap_variables.pkl', 'w'))
-  variables = pickle.load(open('pkl/cap_variables.pkl', 'r'))
-  train_truth = [t['vote'] for t in train]
-  overall_avg = float(sum(train_truth)) / len(train_truth)
+  expectation_maximization(variables, train)
+  pickle.dump(variables, open('pkl/cap_variables.pkl', 'w'))
+  #variables = pickle.load(open('pkl/cap_variables.pkl', 'r'))
+  #train_truth = [t['vote'] for t in train]
+  #overall_avg = float(sum(train_truth)) / len(train_truth)
 
   print 'Calculate Predictions'
   pred = calculate_predictions(variables, test, reviews, users, sim_author_voter,
     conn_author_voter)
-  print pred
   sse = sum([(pred[i] - test[i]['vote']) ** 2 for i in xrange(len(test))])
   rmse = sqrt(sse/len(test))
 
