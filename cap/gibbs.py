@@ -20,7 +20,8 @@ from cap.models import ScalarVariable, ArrayVariable
 """
 def gibbs_sample(groups, votes, n_samples):
   for _ in xrange(n_samples):
-    for group in groups.itervalues():
+    for g_name in sorted(groups.keys()):
+      group = groups[g_name]
       for variable in group.iter_variables():
         if isinstance(variable, ScalarVariable):
           mean, var = variable.get_cond_mean_and_var(groups, votes)

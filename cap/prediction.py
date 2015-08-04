@@ -128,12 +128,51 @@ def calculate_predictions(groups, test, reviews, users, users_sim, users_conn):
     if not gamma and (a_id, v_id) in users_sim:
       gamma = groups['gamma'].weight_param.value.T \
       .dot(map_users_sim_features(users_sim[(a_id, v_id)]))[0,0]
-    lambd = 0
-   # lambd = groups['lambda'].get_instance(vote).value if \
-   #     groups['lambda'].contains(vote) else 0
-   # if not lambd and (a_id, v_id) in users_conn:
-   #   lambd = groups['lambda'].weight_param.value.T \
-   #   .dot(map_users_conn_features(users_conn[(a_id, v_id)]))[0,0]
+    lambd = groups['lambda'].get_instance(vote).value if \
+        groups['lambda'].contains(vote) else 0
+    if not lambd and (a_id, v_id) in users_conn:
+      lambd = groups['lambda'].weight_param.value.T \
+      .dot(map_users_conn_features(users_conn[(a_id, v_id)]))[0,0]
+    prediction = u.T.dot(v)[0,0] + alfa + beta + xi + gamma + lambd
+    pred.append(prediction)
+  return pred
+
+
+def calculate_predictions2(groups, test, reviews, users, users_sim, users_conn):
+  pred = []
+  ignored = 0
+  for vote in test:
+    r_id, a_id, v_id = vote['review'], vote['reviewer'], vote['voter']
+    alfa = beta = 0
+    u = v = np.zeros((const.K, 1))
+    if v_id in users:
+      alfa = groups['alpha'].get_instance(vote).empiric_mean if \
+          groups['alpha'].contains(vote) else groups['alpha'].weight_param.value.T \
+          .dot(map_voter_features(users[v_id]))[0,0]
+      u = groups['u'].get_instance(vote).empiric_mean if groups['u'].contains(vote) \
+          else groups['u'].weight_param.value \
+          .dot(map_voter_features(users[v_id]))
+    if r_id in reviews:
+      beta = groups['beta'].get_instance(vote).empiric_mean if \
+          groups['beta'].contains(vote) else groups['beta'].weight_param.value.T \
+          .dot(map_review_features(reviews[r_id]))[0,0]
+      v = groups['v'].get_instance(vote).empiric_mean if groups['v'].contains(vote) \
+          else groups['v'].weight_param.value \
+          .dot(map_review_features(reviews[r_id]))
+    if a_id in users:
+      xi = groups['xi'].get_instance(vote).empiric_mean if \
+          groups['xi'].contains(vote) else groups['xi'].weight_param.value.T \
+          .dot(map_author_features(users[a_id]))[0,0]
+    gamma = groups['gamma'].get_instance(vote).empiric_mean if \
+        groups['gamma'].contains(vote) else 0
+    if not gamma and (a_id, v_id) in users_sim:
+      gamma = groups['gamma'].weight_param.value.T \
+      .dot(map_users_sim_features(users_sim[(a_id, v_id)]))[0,0]
+    lambd = groups['lambda'].get_instance(vote).empiric_mean if \
+        groups['lambda'].contains(vote) else 0
+    if not lambd and (a_id, v_id) in users_conn:
+      lambd = groups['lambda'].weight_param.value.T \
+      .dot(map_users_conn_features(users_conn[(a_id, v_id)]))[0,0]
     prediction = u.T.dot(v)[0,0] + alfa + beta + xi + gamma + lambd
     pred.append(prediction)
   return pred
@@ -180,12 +219,31 @@ def main():
   #overall_avg = float(sum(train_truth)) / len(train_truth)
 
   print 'Calculate Predictions'
+  pred = calculate_predictions(variables, train, reviews, users, sim_author_voter,
+    conn_author_voter)
+  pred2 = calculate_predictions2(variables, train, reviews, users, sim_author_voter,
+    conn_author_voter)
+   
+  print "TRAINING ERROR"
+  sse = sum([(pred[i] - train[i]['vote']) ** 2 for i in xrange(len(train))])
+  rmse = sqrt(sse/len(train))
+  print 'RMSE: %s' % rmse
+  sse = sum([(pred2[i] - train[i]['vote']) ** 2 for i in xrange(len(train))])
+  rmse = sqrt(sse/len(train))
+  print 'RMSE2: %s' % rmse
+  
   pred = calculate_predictions(variables, test, reviews, users, sim_author_voter,
     conn_author_voter)
+  pred2 = calculate_predictions2(variables, test, reviews, users, sim_author_voter,
+    conn_author_voter)
+   
+  print "TESTING ERROR"
   sse = sum([(pred[i] - test[i]['vote']) ** 2 for i in xrange(len(test))])
   rmse = sqrt(sse/len(test))
-
   print 'RMSE: %s' % rmse
+  sse = sum([(pred2[i] - test[i]['vote']) ** 2 for i in xrange(len(test))])
+  rmse = sqrt(sse/len(test))
+  print 'RMSE2: %s' % rmse
 
 if __name__ == '__main__':
   main() 

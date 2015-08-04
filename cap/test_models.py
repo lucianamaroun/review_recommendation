@@ -101,7 +101,7 @@ class MatrixValueTestCase(unittest.TestCase):
         [3,3]]))) 
 
 
-class TinyScenarioTestCase(unittest.TestCase):
+class SmallScenarioTestCase(unittest.TestCase):
   ''' Test case for a scalar variance parameter. '''
 
   def setUp(self):
@@ -161,7 +161,7 @@ class TinyScenarioTestCase(unittest.TestCase):
         {'review': 'r5', 'reviewer': 'a3', 'voter': 'v5', 'vote': 1}
     ]
     self.groups = {}
-    self.var_H = models.ScalarVarianceParameter('var_H')
+    self.var_H = models.PredictionVarianceParameter('var_H')
     self._create_groups()
     self.groups['u'].set_pair_name('v')
     self.groups['v'].set_pair_name('u')

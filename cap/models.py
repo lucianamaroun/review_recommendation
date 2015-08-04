@@ -205,7 +205,6 @@ class ArrayVarianceParameter(Parameter):
     
         Args:
           name: string with the name of the parameter.
-          size: pair with vector or matrix dimensions.
 
         Returns:
           None.
@@ -238,8 +237,8 @@ class ArrayVarianceParameter(Parameter):
     for v in variable_group.iter_variables():
       reg = w_value.dot(v.features)
       sse += sum(((v.empiric_mean - reg)**2).reshape(-1).tolist())
-      var_sum += sum(diagonal(v.empiric_var).tolist())
-    self.update((sse + var_sum) / size)
+      var_sum += sum(v.empiric_var.reshape(-1).tolist())
+    self.update(float(sse + var_sum) / size)
 
 
 class EntityScalarParameter(Parameter):
@@ -523,6 +522,10 @@ class Variable(Value):
         rest = rest - var_value
     return rest
 
+  def reset_samples(self):
+    self.samples = []
+
+
 class ScalarVariable(Variable):
   """ Class defining a scalar latent variable.
   """
@@ -552,6 +555,7 @@ class ScalarVariable(Variable):
           None. The empiric mean field is updated in this object.
     """
     self.empiric_mean = mean(self.samples)
+    self.update(float(self.empiric_mean))
 
   def calculate_empiric_var(self):
     """ Calculates the empiric variance of this variable using the samples.
@@ -595,10 +599,14 @@ class ArrayVariable(Variable):
           None. The empiric mean field is updated in this object.
     """
     self.empiric_mean = (1.0 / len(self.samples)) * sum(self.samples)
+    self.update(self.empiric_mean)
 
   def calculate_empiric_var(self):
     """ Calculates the empiric variance of this variable using the samples,
         vector case.
+
+        Observation: Covariances are ignored. Then, the result is a list of
+          variances, one for each dimension.
 
         Args:
           None.
@@ -653,12 +661,11 @@ class EntityScalarVariable(ScalarVariable):
     for vote in related_votes:
       rest = self.get_rest_value(groups, vote)
       mean += rest
-      variance += 1.0
-    variance /= var_group.var_H.value
     mean /= var_group.var_H.value
-    variance = 1.0 / (1.0/var_group.var_param.value + variance)
-    dot = var_group.weight_param.value.T.dot(self.features)[0,0] / \
-        var_group.var_param.value
+    variance = 1.0 / (1.0 / var_group.var_param.value + \
+        len(related_votes) / var_group.var_H.value)
+    dot = var_group.weight_param.value.T.dot(self.features)[0,0] \
+        / var_group.var_param.value
     mean = variance * (mean + dot)
     return mean, variance
 
@@ -755,7 +762,7 @@ class InteractionScalarVariable(ScalarVariable):
     for vote in related_votes:
       rest = self.get_rest_value(groups, vote)
       variance += 1.0
-      mean += rest
+      mean += sigmoid(rest)
     mean /= var_group.var_H.value
     variance /= var_group.var_H.value
     variance = 1.0 / (1.0/var_group.var_param.value + variance)
