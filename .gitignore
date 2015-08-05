@@ -1,5 +1,6 @@
 data/*
 plot/*
+pkl/*
 old*
 out*
 \.DS_Store*

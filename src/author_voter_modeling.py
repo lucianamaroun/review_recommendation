@@ -9,13 +9,13 @@
 """
 
 
-from math import log
+from math import log, isnan
 
 import numpy as np
 import networkx as nx
-from scipy.spatial.distance import cosine
 from scipy.stats import pearsonr
 
+from src.aux import cosine
 
 _BETA = 0.005
 
@@ -32,7 +32,7 @@ _BETA = 0.005
 def jaccard(set_a, set_b):
   inters = set_a.intersection(set_b)
   union = set_a.union(set_b)
-  return float(len(inters)) / len(union)
+  return float(len(inters)) / len(union) if len(union) > 0 else 0.0
 
 
 """ Computes Adamic-Adar index regarding commons trustors (in-degree). This
@@ -142,13 +142,18 @@ def calculate_authoring_similarity(author, voter):
       voter['ratings'])
   features['common_rated'] = len(author_rated.intersection(voter_rated))
   features['jacc_rated'] = jaccard(author_rated, voter_rated)
-  features['cos_ratings'] = 1 - cosine(author_ratings, voter_ratings)
-  features['pear_ratings'] = pearsonr(author_ratings, voter_ratings)[0]
+  features['cos_ratings'] = cosine(author_ratings, voter_ratings)
+  pearson = pearsonr(author_ratings, voter_ratings)[0]  
+  features['pear_ratings'] = pearson if not isnan(pearson) else 0.0 
   features['diff_avg_ratings'] = author['avg_rating'] - voter['avg_rating']
-  features['diff_max_ratings'] = max(author['ratings'].values()) - \
-      max(voter['ratings'].values())
-  features['diff_min_ratings'] = min(author['ratings'].values()) - \
-      min(voter['ratings'].values()) 
+  if not author['ratings'].values() or not voter['ratings'].values():
+    features['diff_max_ratings'] = -1
+    features['diff_min_ratings'] = -1
+  else:
+    features['diff_max_ratings'] = max(author['ratings'].values()) - \
+        max(voter['ratings'].values())
+    features['diff_min_ratings'] = min(author['ratings'].values()) - \
+        min(voter['ratings'].values()) 
   return features
 
 
@@ -173,6 +178,51 @@ def calculate_connection_strength(author, voter, trusts):
   features['jacc_trustors'] = jaccard(author_trustors, voter_trustors)
   features['adamic_adar_trustees'] = adamic_adar_trustees(trusts, a_id, v_id)
   features['adamic_adar_trustors'] = adamic_adar_trustors(trusts, a_id, v_id)
-  features['katz'] = katz(trusts, a_id, v_id)
+#  features['katz'] = katz(trusts, a_id, v_id)
   return features
+
+
+""" Models users similarities using votes in the training set. 
+
+    Args:
+      train: list of votes in the training set.
+      users: dictionary of user models.
+
+    Returns:
+      A dictionary of similarity features indexed by a pair of user ids.
+"""
+def model_author_voter_similarity(train, users, similar):
+  sim_features = {}
+  for vote in train:
+    author_id = vote['reviewer']
+    voter_id = vote['voter']
+    if (author_id, voter_id) in sim_features or author_id not in \
+      similar[voter_id]:
+      continue
+    sim_features[(author_id, voter_id)] = \
+        calculate_authoring_similarity(users[author_id], users[voter_id])
+  return sim_features
+
+
+""" Models users connection strength using votes in the training set. 
+
+    Args:
+      train: list of votes in the training set.
+      users: dictionary of user models.
+
+    Returns:
+      A dictionary of connection features indexed by a pair of user ids.
+"""
+def model_author_voter_connection(train, users, trusts):
+  conn_features = {}
+  for vote in train:
+    author_id = vote['reviewer']
+    voter_id = vote['voter']
+    if (author_id, voter_id) in conn_features or voter_id not in trusts or \
+      author_id not in trusts[voter_id]:
+      continue
+    conn_features[(author_id, voter_id)] = \
+        calculate_connection_strength(users[author_id], users[voter_id], trusts)
+
+  return conn_features
 
