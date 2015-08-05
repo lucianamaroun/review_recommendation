@@ -222,7 +222,6 @@ class TinyScenarioTestCase(unittest.TestCase):
     
   def test_cond_mean_var_alpha(self):
     prev_lkl = likelihood(self.groups, self.votes)
-    print "prev lkl: %f" % prev_lkl
     var = self.groups['alpha'].iter_variables().next()
     mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes)
     variance = 1.0 / (2.0 / self.groups['alpha'].var_H.value +
@@ -237,147 +236,99 @@ class TinyScenarioTestCase(unittest.TestCase):
     old_value = var.value
     var.update(float(mean_res))
     self.assertGreaterEqual(likelihood(self.groups, self.votes), prev_lkl)
-    print "new lkl: %f" % likelihood(self.groups, self.votes)
-    prev_sse = 0
-    sse = 0
-    for vote in self.votes:
-      prev_pred = self.groups['beta'].get_instance(vote).value + \
-          old_value + self.groups['xi'].iter_variables().next().value + \
-          self.groups['gamma'].iter_variables().next().value + \
-          self.groups['lambda'].iter_variables().next().value + \
-          self.groups['u'].iter_variables().next().value.T \
-          .dot(self.groups['v'].get_instance(vote).value)[0,0]
-      prev_sse += (prev_pred - vote['vote']) ** 2
-      pred = self.groups['beta'].get_instance(vote).value + \
-          self.groups['alpha'].iter_variables().next().value + \
-          self.groups['xi'].iter_variables().next().value + \
-          self.groups['gamma'].iter_variables().next().value + \
-          self.groups['lambda'].iter_variables().next().value + \
-          self.groups['u'].iter_variables().next().value.T \
-          .dot(self.groups['v'].get_instance(vote).value)[0,0]
-      sse += (pred - vote['vote']) ** 2
-    self.assertGreaterEqual(prev_sse, sse)
          
-#  def test_cond_mean_var_beta(self):
-#    print "lkl: %f" % likelihood(self.groups, self.votes)
-#    vote = self.votes[0] 
-#    iterator = self.groups['beta'].iter_variables()
-#    var = iterator.next()
-#    mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes)
-#    variance = 1.0 / (1.0 / self.groups['beta'].var_H.value +
-#        1.0 / self.groups['beta'].var_param.value)
-#    mean = variance * (var.get_rest_value(self.groups, vote) / \
-#        self.groups['beta'].var_H.value + \
-#        self.groups['beta'].weight_param.value.T.dot(var.features)[0,0] / \
-#        self.groups['beta'].var_param.value)
-#    self.assertAlmostEqual(mean_res, mean)
-#    self.assertAlmostEqual(var_res, variance)
-#    old_value = var.value
-#    var.update(float(mean_res))
-#    prev_pred = self.groups['beta'].get_instance(vote).value + \
-#        old_value + self.groups['xi'].iter_variables().next().value + \
-#        self.groups['gamma'].iter_variables().next().value + \
-#        self.groups['lambda'].iter_variables().next().value + \
-#        self.groups['u'].iter_variables().next().value.T \
-#        .dot(self.groups['v'].get_instance(vote).value)[0,0]
-#    pred = self.groups['beta'].get_instance(vote).value + \
-#        self.groups['alpha'].iter_variables().next().value + \
-#        self.groups['xi'].iter_variables().next().value + \
-#        self.groups['gamma'].iter_variables().next().value + \
-#        self.groups['lambda'].iter_variables().next().value + \
-#        self.groups['u'].iter_variables().next().value.T \
-#        .dot(self.groups['v'].get_instance(vote).value)[0,0]
-#    self.assertGreaterEqual(abs(prev_pred - vote['vote']), abs(pred -
-#        vote['vote']))
-#    print "lkl: %f" % likelihood(self.groups, self.votes)
-#    var = self.groups['alpha'].get_instance(vote)
-#    mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes)
-#    variance = 1.0 / (1.0 / self.groups['beta'].var_H.value +
-#        1.0 / self.groups['beta'].var_param.value)
-#    mean = variance * (var.get_rest_value(self.groups, vote) / \
-#        self.groups['beta'].var_H.value + \
-#        self.groups['beta'].weight_param.value.T.dot(var.features)[0,0] / \
-#        self.groups['beta'].var_param.value)
-#    self.assertAlmostEqual(mean_res, mean)
-#    self.assertAlmostEqual(var_res, variance)
-#    old_value = var.value
-#    var.update(float(mean_res))
-#    prev_pred = self.groups['beta'].get_instance(vote).value + \
-#        old_value + self.groups['xi'].iter_variables().next().value + \
-#        self.groups['gamma'].iter_variables().next().value + \
-#        self.groups['lambda'].iter_variables().next().value + \
-#        self.groups['u'].iter_variables().next().value.T \
-#        .dot(self.groups['v'].get_instance(vote).value)[0,0]
-#    pred = self.groups['beta'].get_instance(vote).value + \
-#        self.groups['alpha'].iter_variables().next().value + \
-#        self.groups['xi'].iter_variables().next().value + \
-#        self.groups['gamma'].iter_variables().next().value + \
-#        self.groups['lambda'].iter_variables().next().value + \
-#        self.groups['u'].iter_variables().next().value.T \
-#        .dot(self.groups['v'].get_instance(vote).value)[0,0]
-#    self.assertGreaterEqual(abs(prev_pred - vote['vote']), abs(pred -
-#        vote['vote']))
-#    print "lkl: %f" % likelihood(self.groups, self.votes)
+  def test_cond_mean_var_beta(self):
+    iterator = self.groups['beta'].iter_variables()
+    sse = 0
+    prev_sse = 0
+    for vote in self.votes:
+      var = iterator.next()
+      mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes)
+      variance = 1.0 / (1.0 / self.groups['beta'].var_H.value +
+          1.0 / self.groups['beta'].var_param.value)
+      mean = variance * (var.get_rest_value(self.groups, vote) / \
+          self.groups['beta'].var_H.value + \
+          self.groups['beta'].weight_param.value.T.dot(var.features)[0,0] / \
+          self.groups['beta'].var_param.value)
+      self.assertAlmostEqual(mean_res, mean)
+      self.assertAlmostEqual(var_res, variance)
+      prev_lkl = likelihood(self.groups, self.votes)
+      var.update(float(mean_res))
+      self.assertGreaterEqual(likelihood(self.groups, self.votes), prev_lkl)
      
-#  def test_e_step(self):
-#    #print "lkl: %f" % likelihood(self.groups, self.votes)
-#    em.perform_e_step(self.groups, self.votes, 10)
-#    #print "lkl: %f" % likelihood(self.groups, self.votes)
-#    vote = self.votes[0]
-#    pred_0 = self.groups['beta'].get_instance(vote).value + \
-#        self.groups['alpha'].iter_variables().next().value + \
-#        self.groups['xi'].iter_variables().next().value + \
-#        self.groups['gamma'].iter_variables().next().value + \
-#        self.groups['lambda'].iter_variables().next().value + \
-#        self.groups['u'].iter_variables().next().value.T \
-#        .dot(self.groups['v'].get_instance(vote).value)[0,0]
-#    beta = self.groups['beta'].get_instance(vote)
-#    alpha = self.groups['alpha'].iter_variables().next()
-#    xi = self.groups['xi'].iter_variables().next()
-#    gamma = self.groups['gamma'].iter_variables().next()
-#    lambd = self.groups['lambda'].iter_variables().next()
-#    u = self.groups['u'].iter_variables().next()
-#    v = self.groups['v'].get_instance(vote)
-#    g_0 = self.groups['beta'].weight_param.value
-#    d_0 = self.groups['alpha'].weight_param.value
-#    b_0 = self.groups['xi'].weight_param.value
-#    r_0 = self.groups['gamma'].weight_param.value
-#    h_0 = self.groups['lambda'].weight_param.value
-#    W_0 = self.groups['u'].weight_param.value
-#    V_0 = self.groups['v'].weight_param.value
-#    em.perform_m_step(self.groups, self.votes)
-#    g_n = self.groups['beta'].weight_param.value
-#    d_n = self.groups['alpha'].weight_param.value
-#    b_n = self.groups['xi'].weight_param.value
-#    r_n = self.groups['gamma'].weight_param.value
-#    h_n = self.groups['lambda'].weight_param.value
-#    W_n = self.groups['u'].weight_param.value
-#    V_n = self.groups['v'].weight_param.value
-#    print beta.value, g_0.T.dot(beta.features), g_n.T.dot(beta.features)
-#    print alpha.value, d_0.T.dot(alpha.features), d_n.T.dot(alpha.features)
-#    print xi.value, b_0.T.dot(xi.features), b_n.T.dot(xi.features)
-#    print gamma.value, r_0.T.dot(gamma.features), r_n.T.dot(gamma.features)
-#    print lambd.value, h_0.T.dot(lambd.features), h_n.T.dot(lambd.features)
-#    print u.value
-#    print W_0.dot(u.features)
-#    print W_n.dot(u.features)
-#    print v.value
-#    print V_0.dot(v.features)
-#    print V_n.dot(v.features)
-#    self.assertGreaterEqual(abs(beta.value - g_0.T.dot(beta.features)), \
-#        abs(beta.value - g_n.T.dot(beta.features)))
-#    self.assertGreaterEqual(abs(alpha.value - d_0.T.dot(alpha.features)), \
-#        abs(alpha.value - d_n.T.dot(alpha.features)))
-#    self.assertGreaterEqual(abs(xi.value - b_0.T.dot(xi.features)), \
-#        abs(xi.value - b_n.T.dot(xi.features)))
-#    self.assertGreaterEqual(abs(gamma.value - r_0.T.dot(gamma.features)), \
-#        abs(gamma.value - r_n.T.dot(gamma.features)))
-#    self.assertGreaterEqual(abs(lambd.value - h_0.T.dot(lambd.features)), \
-#        abs(lambd.value - h_n.T.dot(lambd.features)))
-#    self.assertGreaterEqual(sum(abs(u.value - W_0.dot(u.features))), \
-#        sum(abs(u.value - W_n.dot(u.features))))
-#    self.assertGreaterEqual(sum(abs(v.value - V_0.dot(v.features))), \
-#        sum(abs(v.value - V_n.dot(v.features))))
+  def test_cond_mean_var_xi(self):
+    prev_lkl = likelihood(self.groups, self.votes)
+    var = self.groups['xi'].iter_variables().next()
+    mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes)
+    variance = 1.0 / (2.0 / self.groups['xi'].var_H.value +
+        1.0 / self.groups['xi'].var_param.value)
+    mean = variance * ((var.get_rest_value(self.groups, self.votes[0]) + \
+        var.get_rest_value(self.groups, self.votes[1])) / \
+        self.groups['xi'].var_H.value + \
+        self.groups['xi'].weight_param.value.T.dot(var.features)[0,0] / \
+        self.groups['xi'].var_param.value)
+    self.assertAlmostEqual(mean_res, mean)
+    self.assertAlmostEqual(var_res, variance)
+    var.update(float(mean_res))
+    self.assertGreaterEqual(likelihood(self.groups, self.votes), prev_lkl)
+
+  def test_e_step(self):
+    em.perform_e_step(self.groups, self.votes, 10)
+    vote = self.votes[0]
+    pred_0 = self.groups['beta'].get_instance(vote).value + \
+        self.groups['alpha'].iter_variables().next().value + \
+        self.groups['xi'].iter_variables().next().value + \
+        self.groups['gamma'].iter_variables().next().value + \
+        self.groups['lambda'].iter_variables().next().value + \
+        self.groups['u'].iter_variables().next().value.T \
+        .dot(self.groups['v'].get_instance(vote).value)[0,0]
+    beta = self.groups['beta'].get_instance(vote)
+    alpha = self.groups['alpha'].iter_variables().next()
+    xi = self.groups['xi'].iter_variables().next()
+    gamma = self.groups['gamma'].iter_variables().next()
+    lambd = self.groups['lambda'].iter_variables().next()
+    u = self.groups['u'].iter_variables().next()
+    v = self.groups['v'].get_instance(vote)
+    g_0 = self.groups['beta'].weight_param.value
+    d_0 = self.groups['alpha'].weight_param.value
+    b_0 = self.groups['xi'].weight_param.value
+    r_0 = self.groups['gamma'].weight_param.value
+    h_0 = self.groups['lambda'].weight_param.value
+    W_0 = self.groups['u'].weight_param.value
+    V_0 = self.groups['v'].weight_param.value
+    em.perform_m_step(self.groups, self.votes)
+    g_n = self.groups['beta'].weight_param.value
+    d_n = self.groups['alpha'].weight_param.value
+    b_n = self.groups['xi'].weight_param.value
+    r_n = self.groups['gamma'].weight_param.value
+    h_n = self.groups['lambda'].weight_param.value
+    W_n = self.groups['u'].weight_param.value
+    V_n = self.groups['v'].weight_param.value
+   # print beta.value, g_0.T.dot(beta.features), g_n.T.dot(beta.features)
+   # print alpha.value, d_0.T.dot(alpha.features), d_n.T.dot(alpha.features)
+   # print xi.value, b_0.T.dot(xi.features), b_n.T.dot(xi.features)
+   # print gamma.value, r_0.T.dot(gamma.features), r_n.T.dot(gamma.features)
+   # print lambd.value, h_0.T.dot(lambd.features), h_n.T.dot(lambd.features)
+   # print u.value
+   # print W_0.dot(u.features)
+   # print W_n.dot(u.features)
+   # print v.value
+   # print V_0.dot(v.features)
+   # print V_n.dot(v.features)
+    self.assertGreaterEqual(abs(beta.value - g_0.T.dot(beta.features)), \
+        abs(beta.value - g_n.T.dot(beta.features)))
+    self.assertGreaterEqual(abs(alpha.value - d_0.T.dot(alpha.features)), \
+        abs(alpha.value - d_n.T.dot(alpha.features)))
+    self.assertGreaterEqual(abs(xi.value - b_0.T.dot(xi.features)), \
+        abs(xi.value - b_n.T.dot(xi.features)))
+    self.assertGreaterEqual(abs(gamma.value - r_0.T.dot(gamma.features)), \
+        abs(gamma.value - r_n.T.dot(gamma.features)))
+    self.assertGreaterEqual(abs(lambd.value - h_0.T.dot(lambd.features)), \
+        abs(lambd.value - h_n.T.dot(lambd.features)))
+    self.assertGreaterEqual(sum(abs(u.value - W_0.dot(u.features))), \
+        sum(abs(u.value - W_n.dot(u.features))))
+    self.assertGreaterEqual(sum(abs(v.value - V_0.dot(v.features))), \
+        sum(abs(v.value - V_n.dot(v.features))))
 
 if __name__ == '__main__':
   unittest.main() 

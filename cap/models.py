@@ -46,11 +46,11 @@ class Value(object):
           None.
     """
     if type(self.shape) is int and self.shape == 1:
-      self.value = random.random() + 0.0000001
+      self.value = random.uniform(0.00000001, 0.000001)
     elif type(self.shape) is tuple and len(self.shape) == 2 and \
         type(self.shape[0]) is int and type(self.shape[1]) is int and \
         self.shape[0] > 0 and self.shape[1] > 0:
-      self.value = array([[random.random() + 0.0000001 for _ in
+      self.value = array([[random.uniform(0.00000001, 0.000001) for _ in
           range(self.shape[1])] for _ in range(self.shape[0])])
     else:
       raise TypeError('TypeError: shape should be a positive int or a 2-tuple of positive ints.')
