@@ -1,28 +1,72 @@
+""" EM module
+    ---------------
+
+    Performs EM method to fit latent variables and parameters of CAP. 
+
+    Usage: this module is not directly executed.
+"""
+
+from numpy.random import normal, multivariate_normal
+from math import sqrt
+import numpy as np
+
+from cap.models import ScalarVariable, ArrayVariable
 from cap.gibbs import gibbs_sample
 
 
-def expectation_maximization(variables, votes):
-  for i in xrange(5):
+def expectation_maximization(groups, votes):
+  """ Expectation Maximization algorithm for CAP baseline. Iterates over E and
+      M-steps, fitting latent variables and parameters, respectively.
+      
+      Observation: The number of iterations was split in three stages. Each one
+        has a number of gibbs samples to compute. This was suggested in RLFM
+        paper (http://dl.acm.org/citation.cfm?id=1557029).
+
+      Args:
+        groups: dictionary of Group of variables objects.
+        votes: list of votes, represented as dictionaries, which is the data.
+       
+      Returns:
+        None. Variable and Parameter objects are changes in place.
+  """ 
+  for i in xrange(EM_ITER_FIRST):
     print "EM iteration %d" % i
     print "E-step"
-    perform_e_step(variables, votes, 5)
+    perform_e_step(variables, votes, GIBBS_SAMPLES_FIRST)
     print "M-step"
     perform_m_step(variables, votes)
-  for i in xrange(5):
-    print "EM iteration %d" % i
+  for i in xrange(EM_ITER_SECOND):
+    print "EM iteration %d" % (EM_ITER_FIRST + i)
     print "E-step"
-    perform_e_step(variables, votes, 20)
+    perform_e_step(variables, votes, GIBBS_SAMPLES_SECOND)
     print "M-step"
     perform_m_step(variables, votes)
-  for i in xrange(20):
-    print "EM iteration %d" % i
+  for i in xrange(EM_ITER_THIRD):
+    print "EM iteration %d" % (EM_ITER_FIRST + EM_ITER_SECOND + i)
     print "E-step"
-    perform_e_step(variables, votes, 100)
+    perform_e_step(variables, votes, GIBBS_SAMPLES_THIRD)
     print "M-step"
     perform_m_step(variables, votes)
 
 
 def perform_e_step(groups, votes, n_samples):
+  """ Performs E-step of EM algorithm. Consists of calculating the expectation
+      of the complete log-likelihood with respect to the posterior of latent
+      variables (distribution of latent variables given data and parameters).
+
+      Observation: The E value is not in closed format, thus is approximated
+      by gibbs sampling.
+  
+      Args:
+        groups: dictionary of Group of variables objects.
+        votes: list of votes, represented as dictionaries, which is the data.
+        n_samples: number of gibbs samples to perform to approximate the
+          expectation.
+ 
+      Returns:
+        None. The variables will have samples, empiric mean and variance
+          attributes updated. 
+  """
   reset_variables_samples(groups)
   print "Gibbs Sampling"
   gibbs_sample(groups, votes, n_samples)
@@ -31,16 +75,53 @@ def perform_e_step(groups, votes, n_samples):
 
 
 def reset_variables_samples(groups):
+  """ Resets sample of variables between EM iterations.
+
+      Args:
+        groups: dictionary of Group objects.
+
+      Returns:
+        None. The samples of variables are updated (cleaned).
+  """
   for group in groups.itervalues():
     for variable in group.iter_variables():
       variable.reset_samples()
+
+
+def gibbs_sample(groups, votes, n_samples):
+  """ Performs Gibbs Sampling over groups.
+
+      Observation: each Variable object has a value and a list of samples. Once a
+      new sample is generated, the value is updated to this new sample and the
+      subsequent calculations of mean and variance of other values use this new
+      value.
+
+      Args:
+        groups: a dict of Group objects.
+        n_samples: the number of samples to obtain.
+
+      Returns:
+        None. The samples are inserted into Variable objects.
+  """
+  for _ in xrange(n_samples):
+    for g_name in sorted(groups.keys()):
+      group = groups[g_name]
+      for variable in group.iter_variables():
+        if isinstance(variable, ScalarVariable):
+          mean, var = variable.get_cond_mean_and_var(groups, votes)
+          variable.add_sample(normal(mean, sqrt(var)))
+        if isinstance(variable, ArrayVariable):
+          mean, cov = variable.get_cond_mean_and_var(groups, votes)
+          mean = mean.reshape(-1)
+          sample = multivariate_normal(mean, cov).reshape(mean.size, 1)
+          variable.add_sample(sample)
 
 
 def calculate_empiric_mean_and_variance(groups):
   """ Calculates empiric mean and variance of the groups from samples.
 
       Args:
-        groups: dictionary of VariableGroup objects.
+        groups: dictionary of Group of variables objects.
 
       Returns:
         None. The values of mean and variance are updated on each Variable
@@ -53,9 +134,16 @@ def calculate_empiric_mean_and_variance(groups):
 
 
 def perform_m_step(groups, votes):
-  optimize_parameters(groups, votes)
-  
-def optimize_parameters(groups, votes):
+  """ Performs M-step of EM algorithm. Adjust parameters by OLS, fitting them
+      as linear regression weights for monte carlo means calculated on E-step.
+
+      Args:
+        groups: dictionary of Group objects, indexed by name.
+        votes: list of vote dictionaries, the data.
+
+      Returns:
+        None. The values of the Parameter objects are updated.
+  """
   for group in groups.itervalues():
     group.weight_param.optimize(group)
     group.var_param.optimize(group)

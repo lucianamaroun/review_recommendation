@@ -1,3 +1,11 @@
+""" Models Module
+    -------------
+
+    Defines variables, parameters and group of variable classes, which are
+    fitter using EM algorithm and used in the prediction of CAP.
+
+"""
+
 import numpy as np
 from numpy import array, random, reshape, mean, std, identity, zeros, diagonal
 from numpy.linalg import pinv
@@ -762,7 +770,7 @@ class InteractionScalarVariable(ScalarVariable):
     for vote in related_votes:
       rest = self.get_rest_value(groups, vote)
       variance += 1.0
-      mean += sigmoid(rest)
+      mean += rest
     mean /= var_group.var_H.value
     variance /= var_group.var_H.value
     variance = 1.0 / (1.0/var_group.var_param.value + variance)

@@ -1,3 +1,11 @@
+""" Map Features Module
+    ------------------
+
+    Map features from dictionaries of reviews, users or interactions.
+
+    Usage: this method is not directly callable.
+"""
+
 from numpy import reshape, array
 
 
