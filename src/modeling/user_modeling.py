@@ -12,8 +12,8 @@ import math
 from numpy import std, mean
 from networkx import pagerank
 
-from src.author_voter_modeling import obtain_vectors # put in a specialized module
-from src.aux import cosine
+from src.modeling.author_voter_modeling import obtain_vectors # put in a specialized module
+from src.util.aux import cosine
 
 
 """ Initializes user features.

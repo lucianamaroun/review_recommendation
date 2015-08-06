@@ -9,15 +9,15 @@
 """
 
 
-from src import sampler
-from src import parser
-from src.review_modeling import model_reviews_parallel
-from src.user_modeling import model_users, create_missing_user
-from src.data_division import split_votes
+from src.util import sampler
+from src.parsing import parser
+from src.modeling.review_modeling import model_reviews_parallel
+from src.modeling.user_modeling import model_users, create_missing_user
+from src.modeling.data_division import split_votes
 from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 
-_NUM_THREADS = 6 
+_NUM_THREADS = 4 
 _SAMPLE = True 
 _SAMPLE_RATIO = 0.001
 _TRAIN_FILE = '/var/tmp/luciana/train.csv'

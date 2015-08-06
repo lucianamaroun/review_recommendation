@@ -20,7 +20,7 @@ from nltk import pos_tag
 from nltk.corpus import wordnet
 import traceback
 
-from src import parser
+from src.parsing import parser
 from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 

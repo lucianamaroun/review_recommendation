@@ -33,9 +33,9 @@ from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.naive_bayes import GaussianNB
 from sklearn.preprocessing import Imputer
 
-from src.prediction_evaluation import calculate_rmse
-from src.bias_correction import remove_bias, adjust_bias
-from src.scaling import scale_features 
+from src.util.prediction_evaluation import calculate_rmse
+from src.model_selection.bias_correction import remove_bias, adjust_bias
+from src.model_selection.scaling import scale_features 
 
 
 _TRAIN_FILE = '/var/tmp/luciana/train20.csv'

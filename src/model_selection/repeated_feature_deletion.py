@@ -31,10 +31,10 @@ from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.naive_bayes import GaussianNB
 
 from src.prediction import read, train, test
-from src.prediction_evaluation import calculate_rmse
-from src.feature_selection import rank_features_tree, rank_features_rfe, \
-    rank_features_infogain
-from src.bias_correction import remove_bias, adjust_bias
+from src.util.prediction_evaluation import calculate_rmse
+from src.model_selectio.feature_selection import rank_features_tree, \
+    rank_features_rfe, rank_features_infogain
+from src.model_selection.bias_correction import remove_bias, adjust_bias
 
 
 _TRAIN_FILE = '/var/tmp/luciana/train20.csv'

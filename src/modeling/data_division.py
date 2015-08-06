@@ -13,17 +13,17 @@ from math import ceil
 from datetime import datetime
 
 
-""" Models votes with basic identification data (review id, reviewer id, voter 
-    id), the vote value and the date of the review (used as an approximation for
-    the vote date).
-
-    Args:
-      reviews: a dictionary with raw reviews.
-
-    Returns:
-      A list with dictionaries representing votes.
-"""
 def model_votes(reviews):
+  """ Models votes with basic identification data (review id, reviewer id, voter 
+      id), the vote value and the date of the review (used as an approximation for
+      the vote date).
+
+      Args:
+        reviews: a dictionary with raw reviews.
+
+      Returns:
+        A list with dictionaries representing votes.
+  """
   votes = []
 
   for review in reviews.values():
@@ -39,18 +39,18 @@ def model_votes(reviews):
   return votes
 
 
-""" Splits votes between train and test sets. They are sorted chronologically
-    (by review date) and the first half is used for train and the second,
-    for test.
-
-    Args:
-      reviews: dictionary of reviews to extract votes from. 
-
-    Returns:
-      Two lists of vote dictionaries, the first representing the train set and
-    the second, the test set.
-"""
 def split_votes(reviews):
+  """ Splits votes between train and test sets. They are sorted chronologically
+      (by review date) and the first half is used for train and the second,
+      for test.
+
+      Args:
+        reviews: dictionary of reviews to extract votes from. 
+
+      Returns:
+        Two lists of vote dictionaries, the first representing the train set and
+      the second, the test set.
+  """
   votes = model_votes(reviews)
   sorted_reviews = sorted(votes, key=lambda v:
       datetime.strptime(v['date'], '%d.%m.%Y'))

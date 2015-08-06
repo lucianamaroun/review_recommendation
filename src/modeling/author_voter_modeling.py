@@ -15,7 +15,7 @@ import numpy as np
 import networkx as nx
 from scipy.stats import pearsonr
 
-from src.aux import cosine
+from src.util.aux import cosine
 
 _BETA = 0.005
 
