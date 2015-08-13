@@ -12,8 +12,13 @@
 
 from math import exp, log
 from sys import float_info
+from numpy import array, allclose, zeros, absolute
+from numpy.linalg import pinv, norm
+from scipy.optimize import fsolve
+
 
 def sigmoid(value):
+#  return 1 / (1 + exp(-value))
   try:
     denom = 1 + exp(-value)
   except OverflowError:
@@ -28,7 +33,7 @@ def sigmoid(value):
     return 0
 
 def sigmoid_der1(value):
-  # res = exp(-value) / (1 + exp(-value)) ** 2 
+#  return exp(-value) / (1 + exp(-value)) ** 2 
   try:
     e_val = exp(-value)
   except OverflowError:
@@ -47,7 +52,7 @@ def sigmoid_der1(value):
     return 0
 
 def sigmoid_der2(value):
-  # res = exp(-value) * (exp(-value) - 1) / (1 + exp(-value)) ** 3
+#   return exp(-value) * (exp(-value) - 1) / (1 + exp(-value)) ** 3
   try:
     e_val = exp(-value)
     e_val_inc = e_val + 1
@@ -59,13 +64,14 @@ def sigmoid_der2(value):
   try:
     res = e_val / e_val_inc
     res *= e_val_dec / e_val_inc
-    return res * 1 / e_val_inc
+    return res / e_val_inc
   except OverflowError:
     return float_info.max
   except Exception:
     return 0
 
-def newton_raphson(fun, der, variable_group, theta_0, n_iter=50, eps=1e-8):
+def newton_raphson(fun, der, variable_group, theta_0, mse, n_iter=50, eps=1e-8,
+    step=1):
   """ Applies Newton-Raphson's Method. This method finds an approximation for a 
       root of a function numerically by continuously updating acording to the
       derivative and the function at the current value of the variable. 
@@ -80,14 +86,18 @@ def newton_raphson(fun, der, variable_group, theta_0, n_iter=50, eps=1e-8):
         theta_0: value of initial theta.
         n_iter: number of iterations to perform.
   """
-#  return fsolve(fun, theta_0, variable_group, der)
-  theta_n = theta_0 - np.linalg.pinv(der(theta_0, variable_group)) \
+  theta_n = theta_0 - pinv(der(theta_0, variable_group)) \
       .dot(fun(theta_0, variable_group))
   i = 1
-  while i < n_iter and abs(sum(theta_0 - theta_n)) > eps:
+ # print mse(theta_0, variable_group)
+  while i < n_iter and not allclose(theta_n, zeros(theta_0.shape), atol=eps):
     theta_0 = theta_n
-    theta_n = theta_0 - np.linalg.pinv(der(theta_0, variable_group)) \
+   # print mse(theta_0, variable_group)
+    theta_n = theta_0 - step * pinv(der(theta_0, variable_group)) \
         .dot(fun(theta_0, variable_group))
     i += 1
+ # print '--------'
+ # print mse(theta_n, variable_group)
+ # print '--------'
   return theta_n 
 

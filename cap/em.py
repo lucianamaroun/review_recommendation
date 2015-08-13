@@ -11,8 +11,7 @@ from math import sqrt
 import numpy as np
 
 from cap.models import ScalarVariable, ArrayVariable
-from cap.gibbs import gibbs_sample
-
+from cap import const
 
 def expectation_maximization(groups, votes):
   """ Expectation Maximization algorithm for CAP baseline. Iterates over E and
@@ -29,24 +28,24 @@ def expectation_maximization(groups, votes):
       Returns:
         None. Variable and Parameter objects are changes in place.
   """ 
-  for i in xrange(EM_ITER_FIRST):
+  for i in xrange(const.EM_ITER_FIRST):
     print "EM iteration %d" % i
     print "E-step"
-    perform_e_step(variables, votes, GIBBS_SAMPLES_FIRST)
+    perform_e_step(groups, votes, const.GIBBS_SAMPLES_FIRST)
     print "M-step"
-    perform_m_step(variables, votes)
-  for i in xrange(EM_ITER_SECOND):
-    print "EM iteration %d" % (EM_ITER_FIRST + i)
+    perform_m_step(groups, votes)
+  for i in xrange(const.EM_ITER_SECOND):
+    print "EM iteration %d" % (const.EM_ITER_FIRST + i)
     print "E-step"
-    perform_e_step(variables, votes, GIBBS_SAMPLES_SECOND)
+    perform_e_step(groups, votes, const.GIBBS_SAMPLES_SECOND)
     print "M-step"
-    perform_m_step(variables, votes)
-  for i in xrange(EM_ITER_THIRD):
-    print "EM iteration %d" % (EM_ITER_FIRST + EM_ITER_SECOND + i)
+    perform_m_step(groups, votes)
+  for i in xrange(const.EM_ITER_THIRD):
+    print "EM iteration %d" % (const.EM_ITER_FIRST + const.EM_ITER_SECOND + i)
     print "E-step"
-    perform_e_step(variables, votes, GIBBS_SAMPLES_THIRD)
+    perform_e_step(groups, votes, const.GIBBS_SAMPLES_THIRD)
     print "M-step"
-    perform_m_step(variables, votes)
+    perform_m_step(groups, votes)
 
 
 def perform_e_step(groups, votes, n_samples):

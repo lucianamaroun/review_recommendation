@@ -1,5 +1,5 @@
 import unittest
-from numpy import array, identity
+from numpy import array, identity, absolute
 from numpy.linalg import det
 from math import log
 
@@ -304,31 +304,40 @@ class TinyScenarioTestCase(unittest.TestCase):
     h_n = self.groups['lambda'].weight_param.value
     W_n = self.groups['u'].weight_param.value
     V_n = self.groups['v'].weight_param.value
-   # print beta.value, g_0.T.dot(beta.features), g_n.T.dot(beta.features)
-   # print alpha.value, d_0.T.dot(alpha.features), d_n.T.dot(alpha.features)
-   # print xi.value, b_0.T.dot(xi.features), b_n.T.dot(xi.features)
-   # print gamma.value, r_0.T.dot(gamma.features), r_n.T.dot(gamma.features)
-   # print lambd.value, h_0.T.dot(lambd.features), h_n.T.dot(lambd.features)
+   # print beta.value, g_0.T.dot(beta.features)[0,0], g_n.T.dot(beta.features)[0,0]
+   # print alpha.value, d_0.T.dot(alpha.features)[0,0], d_n.T.dot(alpha.features)[0,0]
+   # print xi.value, b_0.T.dot(xi.features)[0,0], b_n.T.dot(xi.features)[0,0]
+   # print gamma.value, r_0.T.dot(gamma.features)[0,0], \
+   #     aux.sigmoid(r_n.T.dot(gamma.features)[0,0])
+   # print lambd.value, h_0.T.dot(lambd.features)[0,0], \
+   #     aux.sigmoid(h_n.T.dot(lambd.features)[0,0])
    # print u.value
    # print W_0.dot(u.features)
    # print W_n.dot(u.features)
    # print v.value
    # print V_0.dot(v.features)
    # print V_n.dot(v.features)
-    self.assertGreaterEqual(abs(beta.value - g_0.T.dot(beta.features)), \
-        abs(beta.value - g_n.T.dot(beta.features)))
-    self.assertGreaterEqual(abs(alpha.value - d_0.T.dot(alpha.features)), \
-        abs(alpha.value - d_n.T.dot(alpha.features)))
-    self.assertGreaterEqual(abs(xi.value - b_0.T.dot(xi.features)), \
-        abs(xi.value - b_n.T.dot(xi.features)))
-    self.assertGreaterEqual(abs(gamma.value - r_0.T.dot(gamma.features)), \
-        abs(gamma.value - r_n.T.dot(gamma.features)))
-    self.assertGreaterEqual(abs(lambd.value - h_0.T.dot(lambd.features)), \
-        abs(lambd.value - h_n.T.dot(lambd.features)))
-    self.assertGreaterEqual(sum(abs(u.value - W_0.dot(u.features))), \
-        sum(abs(u.value - W_n.dot(u.features))))
-    self.assertGreaterEqual(sum(abs(v.value - V_0.dot(v.features))), \
-        sum(abs(v.value - V_n.dot(v.features))))
+    self.assertGreaterEqual(abs(beta.value - g_0.T.dot(beta.features)[0,0]), \
+        abs(beta.value - g_n.T.dot(beta.features)[0,0]))
+    self.assertGreaterEqual(abs(alpha.value - d_0.T.dot(alpha.features)[0,0]), \
+        abs(alpha.value - d_n.T.dot(alpha.features)[0,0]))
+    self.assertGreaterEqual(abs(xi.value - b_0.T.dot(xi.features)[0,0]), \
+        abs(xi.value - b_n.T.dot(xi.features)[0,0]))
+    self.assertGreaterEqual(abs(gamma.value - r_0.T.dot(gamma.features)[0,0]), \
+        abs(gamma.value - aux.sigmoid(r_n.T.dot(gamma.features)[0,0])))
+    new_likelihood = likelihood(self.groups, self.votes)
+    self.groups['gamma'].weight_param.value = r_0
+    self.assertGreaterEqual(new_likelihood, likelihood(self.groups, self.votes))
+    self.assertGreaterEqual(abs(lambd.value - h_0.T.dot(lambd.features)[0,0]), \
+        abs(lambd.value - aux.sigmoid(h_n.T.dot(lambd.features)[0,0])))
+    self.groups['gamma'].weight_param.value = r_n
+    self.groups['lambda'].weight_param.value = h_0
+    self.assertGreaterEqual(new_likelihood, likelihood(self.groups, self.votes))
+    self.groups['lambda'].weight_param.value = h_n
+    self.assertGreaterEqual(sum(absolute(u.value - W_0.dot(u.features))), \
+        sum(absolute(u.value - W_n.dot(u.features))))
+    self.assertGreaterEqual(sum(absolute(v.value - V_0.dot(v.features))), \
+        sum(absolute(v.value - V_n.dot(v.features))))
 
 if __name__ == '__main__':
   unittest.main() 

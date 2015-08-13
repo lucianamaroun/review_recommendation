@@ -9,7 +9,7 @@
 from random import sample
 from math import ceil
 
-from src import parser
+from src.parsing import parser
 
 
 """ Samples reviews.

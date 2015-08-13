@@ -88,7 +88,6 @@ def map_users_conn_features(users_conn):
   """
   new_users_conn = array([users_conn['jacc_trustees'],
       users_conn['jacc_trustors'], users_conn['adamic_adar_trustees'],
-      users_conn['adamic_adar_trustors']#, users_conn['katz']
-      ]) 
-  new_users_conn = reshape(new_users_conn, (4, 1))
+      users_conn['adamic_adar_trustors'], users_conn['katz']]) 
+  new_users_conn = reshape(new_users_conn, (5, 1))
   return new_users_conn

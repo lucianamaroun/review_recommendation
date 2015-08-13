@@ -11,8 +11,7 @@ from numpy import array, random, reshape, mean, std, identity, zeros, diagonal
 from numpy.linalg import pinv
 
 from cap import const
-from cap.aux import sigmoid, sigmoid_der1, sigmoid_der2
-from cap.newton_raphson import newton_raphson
+from cap.aux import sigmoid, sigmoid_der1, sigmoid_der2, newton_raphson
 
 
 class Value(object):
@@ -54,11 +53,11 @@ class Value(object):
           None.
     """
     if type(self.shape) is int and self.shape == 1:
-      self.value = random.uniform(0.00000001, 0.000001)
+      self.value = random.uniform(1e-10, 1e-6)
     elif type(self.shape) is tuple and len(self.shape) == 2 and \
         type(self.shape[0]) is int and type(self.shape[1]) is int and \
         self.shape[0] > 0 and self.shape[1] > 0:
-      self.value = array([[random.uniform(0.00000001, 0.000001) for _ in
+      self.value = array([[random.uniform(1e-10, 1e-6) for _ in
           range(self.shape[1])] for _ in range(self.shape[0])])
     else:
       raise TypeError('TypeError: shape should be a positive int or a 2-tuple of positive ints.')
@@ -80,8 +79,8 @@ class Value(object):
       raise TypeError('TypeError: value should have type %s, not %s' % 
           (type(self.value), type(value)))
     elif (hasattr(value, 'shape') and self.shape != value.shape):
-      raise TypeError('TypeError: value should have shape (%d, %d), not (%d, %d)' 
-          % (self.shape[0], self.shape[1], value.shape[0], value.shape[1]))
+      raise TypeError('TypeError: value should have shape %s, not %s' 
+          % (str(self.shape), str(value.shape)))
     self.value = value 
 
 
@@ -379,8 +378,16 @@ class InteractionScalarParameter(Parameter):
           None, but the value field of the parameter is updated.
     """
     new_value = newton_raphson(self.get_derivative_1, self.get_derivative_2, 
-        variable_group, self.value.reshape(-1))
-    self.update(new_value.reshape(self.value.shape)) 
+        variable_group, self.value, self.mse)
+    self.update(new_value) 
+
+  def mse(self, value, variable_group):
+    mse = 0.0
+    for variable in variable_group.iter_variables():
+      for sample in variable.samples:
+        mse += (sample - sigmoid(value.T.dot(variable.features)[0,0])) ** 2
+    mse /= variable_group.size * variable.num_samples
+    return mse
 
   def get_derivative_1(self, value, variable_group):
     """ Gets the first derivative of the expectation with respect to the
@@ -401,13 +408,13 @@ class InteractionScalarParameter(Parameter):
         Returns:
           The derivative at point value.
     """
-    der = np.zeros(value.size)
+    der = np.zeros(value.shape)
     for variable in variable_group.iter_variables():
-      f = variable.features.reshape(-1)
-      dot = value.dot(f)
+      f = variable.features
+      dot = value.T.dot(f)[0,0]
       for sample in variable.samples:
-        der = der + (sigmoid(dot) - sample) * sigmoid_der1(dot) * f
-    der = (1.0 / variable_group.var_param.value) * der
+        der += (sample - sigmoid(dot)) * sigmoid_der1(dot) * f
+    der *= 1.0 / (variable_group.var_param.value * variable.num_samples)
     return der
 
   def get_derivative_2(self, value, variable_group):
@@ -432,11 +439,11 @@ class InteractionScalarParameter(Parameter):
     der = np.zeros((value.shape[0], value.shape[0])) 
     for variable in variable_group.iter_variables():
       f = variable.features
-      dot = self.value.T.dot(f)[0,0]
+      dot = value.T.dot(f)[0,0]
       for sample in variable.samples:
-        der = der + (sigmoid_der1(dot) ** 2 + (sigmoid(dot) - sample) * \
-            sigmoid_der2(dot)) * f.dot(f.T)
-    der = (1.0 / variable_group.var_param.value) * der
+        der += ((sample - sigmoid(dot)) * sigmoid_der2(dot) - \
+            sigmoid_der1(dot) ** 2) * f.dot(f.T)
+    der *= 1.0 / (variable_group.var_param.value * variable.num_samples)
     return der 
 
 
@@ -464,6 +471,7 @@ class Variable(Value):
     self.e_type = e_type
     self.features = reshape(features, (features.shape[0], 1))
     self.samples = []
+    self.num_samples = 0
     self.empiric_mean = None
     self.empiric_var = None
 
@@ -480,6 +488,7 @@ class Variable(Value):
         Returns:
           None. The value is added to the list of samples    
     """
+    self.num_samples += 1
     self.samples.append(value)
 
   def get_last_sample(self):
@@ -491,7 +500,7 @@ class Variable(Value):
         Returns:
           A value of this variable, with its type.
     """
-    if not self.samples:
+    if not self.num_samples:
       return self.value # initial value
     return self.samples[-1]
 
@@ -531,6 +540,7 @@ class Variable(Value):
     return rest
 
   def reset_samples(self):
+    self.num_samples = 0
     self.samples = []
 
 
@@ -606,7 +616,7 @@ class ArrayVariable(Variable):
         Returns:
           None. The empiric mean field is updated in this object.
     """
-    self.empiric_mean = (1.0 / len(self.samples)) * sum(self.samples)
+    self.empiric_mean = (1.0 / self.num_samples) * sum(self.samples)
     self.update(self.empiric_mean)
 
   def calculate_empiric_var(self):
@@ -805,6 +815,7 @@ class Group(object):
     self.var_param = var_param
     self.var_H = var_H
     self.variables = {} 
+    self.size = 0
     self.pair_name = None
   
   def iter_variables(self):
@@ -872,7 +883,7 @@ class Group(object):
         Returns:
           An integer with the size.
     """
-    return len(self.variables)
+    return self.size 
 
   def set_pair_name(self, pair_name):
     """ Sets pair name of a variable. A pair name is the name of another
@@ -925,6 +936,7 @@ class EntityScalarGroup(Group):
       return 
     self.variables[entity_id] = EntityScalarVariable(self.name, entity_id,
         self.e_type, features)
+    self.size += 1
 
 
 class EntityArrayGroup(Group):
@@ -965,6 +977,7 @@ class EntityArrayGroup(Group):
       return 
     self.variables[entity_id] = EntityArrayVariable(self.name, self.shape,
         entity_id, self.e_type, features)
+    self.size += 1
 
 
 class InteractionScalarGroup(Group):
@@ -1003,3 +1016,4 @@ class InteractionScalarGroup(Group):
       return 
     self.variables[entity_id] = InteractionScalarVariable(self.name,
         entity_id, self.e_type, features)
+    self.size += 1

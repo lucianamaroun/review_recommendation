@@ -192,7 +192,7 @@ class SmallScenarioTestCase(unittest.TestCase):
     for e_id, e_feat in self.voters.iteritems():
       self.groups['u'].add_instance(e_id, e_feat)
     self.groups['v'] = models.EntityArrayGroup('v', (const.K, 1), 'review',
-        models.EntityArrayParameter('V', (const.K,17)),
+        models.EntityArrayParameter('V', (const.K, 17)),
         models.ArrayVarianceParameter('var_v'),
         self.var_H)
     for e_id, e_feat in self.reviews.iteritems():
@@ -203,7 +203,7 @@ class SmallScenarioTestCase(unittest.TestCase):
     for e_id, e_feat in self.sim.iteritems():
       self.groups['gamma'].add_instance(e_id, e_feat)
     self.groups['lambda'] = models.InteractionScalarGroup('lambda', ('reviewer',
-        'voter'), models.InteractionScalarParameter('h', (4,1)),
+        'voter'), models.InteractionScalarParameter('h', (4, 1)),
         models.ScalarVarianceParameter('var_lambda'), self.var_H)
     for e_id, e_feat in self.conn.iteritems():
       self.groups['lambda'].add_instance(e_id, e_feat)
@@ -435,6 +435,7 @@ class SmallScenarioTestCase(unittest.TestCase):
     matrix = None
     y = None 
     for variable in group.iter_variables():
+      variable.num_samples = 10
       variable.samples = [random() for _ in xrange(10)] 
       variable.calculate_empiric_mean()
       variable.calculate_empiric_var()
@@ -471,7 +472,8 @@ class SmallScenarioTestCase(unittest.TestCase):
     matrix = None
     y = None 
     for variable in group.iter_variables():
-      variable.samples = [array([random()]*const.K) for _ in xrange(10)] 
+      variable.num_samples = 10
+      variable.samples = [array([random()]*const.K).reshape(const.K, 1) for _ in xrange(10)] 
       variable.calculate_empiric_mean()
       variable.calculate_empiric_var()
       if matrix is None:
@@ -481,17 +483,17 @@ class SmallScenarioTestCase(unittest.TestCase):
       else:
         size = variable.features.shape[0]
         matrix = vstack((matrix, variable.features.reshape(1, size)))
-        y = vstack((y, variable.empiric_mean))
+        y = vstack((y, variable.empiric_mean.reshape(1, variable.shape[0])))
     weight = pinv(matrix.T.dot(matrix)).dot(matrix.T).dot(y).T
     pred = weight.dot(matrix.T).T
     sse = sum(reshape(((y-pred)**2), -1).tolist())
-    var_sum = sum([sum(diagonal(v.empiric_var).reshape(-1)) for v in 
+    var_sum = sum([sum(v.empiric_var.reshape(-1).tolist()) for v in 
         group.iter_variables()])
-    var = (sse + var_sum) / (group.get_size() * const.K)
+    var = float(sse + var_sum) / (group.get_size() * const.K)
     group.weight_param.optimize(group)
     group.var_param.optimize(group)
     ntest.assert_allclose(weight, group.weight_param.value)
-    self.assertAlmostEqual(var, group.var_param.value)
+    self.assertAlmostEqual(var, group.var_param.value, 5)
 
   def test_interaction_get_der1(self):
     groups = self.groups
@@ -501,12 +503,13 @@ class SmallScenarioTestCase(unittest.TestCase):
     der1 = 0
     param = group.weight_param
     for variable in group.iter_variables():
+      variable.num_samples = 10
       variable.samples = [random() for _ in xrange(10)] 
       feat = variable.features
       dot = param.value.T.dot(feat)[0,0]
       for sample in variable.samples:
-        der1 += (aux.sigmoid(dot) - sample) * aux.sigmoid_der1(dot) * feat
-    der1 = 1/group.var_param.value * der1
+        der1 += (sample - aux.sigmoid(dot)) * aux.sigmoid_der1(dot) * feat
+    der1 = 1/(group.var_param.value*10) * der1
     ntest.assert_allclose(der1, param.get_derivative_1(param.value, group))
 
   def test_interaction_get_der2(self):
@@ -517,24 +520,27 @@ class SmallScenarioTestCase(unittest.TestCase):
     der2 = 0
     param = group.weight_param
     for variable in group.iter_variables():
+      variable.num_samples = 10
       variable.samples = [random() for _ in xrange(10)] 
       feat = variable.features
       dot = param.value.T.dot(feat)[0,0]
       for sample in variable.samples:
-        der2 += (aux.sigmoid_der1(dot) ** 2 + (aux.sigmoid(dot) - sample) * 
+        der2 += (- aux.sigmoid_der1(dot) ** 2 + (sample - aux.sigmoid(dot)) * 
             aux.sigmoid_der2(dot)) * feat.dot(feat.T)
-    der2 = 1/group.var_param.value * der2
+    der2 = 1/(group.var_param.value*10) * der2
+    der2 = der2.reshape(group.weight_param.shape[0], group.weight_param.shape[0])
     ntest.assert_allclose(der2, param.get_derivative_2(param.value, group))
 
   def test_interaction_optimize(self):
     groups = self.groups
     group = groups['lambda']
     for variable in group.iter_variables():
+      variable.num_samples = 10
       variable.samples = [random() for _ in xrange(10)]
     param = group.weight_param
     param.optimize(group)
     ntest.assert_allclose(zeros(param.value.shape), 
-        param.get_derivative_1(param.value, group), atol=1e-10)
+        param.get_derivative_1(param.value, group), atol=1e-3)
 
 
 if __name__ == '__main__':

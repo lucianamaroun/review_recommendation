@@ -20,8 +20,8 @@ from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 _NUM_THREADS = 4 
 _SAMPLE = True 
 _SAMPLE_RATIO = 0.001
-_TRAIN_FILE = '/var/tmp/luciana/train.csv'
-_TEST_FILE = '/var/tmp/luciana/test.csv'
+_TRAIN_FILE = '/var/tmp/luciana/train%f.csv' % _SAMPLE_RATIO
+_TEST_FILE = '/var/tmp/luciana/test%f.csv' % _SAMPLE_RATIO
 
 
 """ Models reviews, users and votes in order to generate features from

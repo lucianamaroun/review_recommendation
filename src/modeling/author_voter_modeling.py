@@ -12,8 +12,13 @@
 from math import log, isnan
 
 import numpy as np
+from numpy import identity
+from numpy.linalg import pinv, inv
 import networkx as nx
 from scipy.stats import pearsonr
+from scipy.sparse import csc_matrix
+from scipy.sparse.linalg import splu
+from scipy.linalg import lu
 
 from src.util.aux import cosine
 
@@ -79,27 +84,31 @@ def adamic_adar_trustees(trusts, user_a, user_b):
   return score
 
 
-""" Computes Katz index between two users. It is defined as the sum over simple
-    path lengths of the number of path with the respective length time beta.
-    Paths in both ways are considered.
+""" Computes Katz matrix. For each pair of uesrs, it is defined as the sum 
+    over simple path lengths of the number of paths with the respective 
+    length times beta. Directed paths are considered.
 
     Args:
       trusts: networkx DiGraph object with trust network.
-      user_a: id of the first user (order is not relevant, though).
-      user_b: id of the second user.
 
     Returns:
-      A real values with the Katz index.
+      A matrix indexed by node ids with katz index of each pair. 
 """      
-def katz(trusts, user_a, user_b):
-  paths_a = nx.all_simple_paths(trusts, user_a, user_b)
-  paths_b = nx.all_simple_paths(trusts, user_b, user_a)
-  path_lengths = [len(p) - 1 for p in paths_a] + [len(p) - 1 for p in paths_b]
-  unique_lengths = set(path_lengths)
-  score = 0.0
-  for l in unique_lengths:
-    score += _BETA * path_lengths.count(l)
-  return score
+def get_katz_matrix(trusts):
+  adj = csc_matrix(nx.adjacency_matrix(trusts, sorted(trusts.nodes())))
+  n = trusts.number_of_nodes()
+  print "Computing Katz %dx%d" % (n, n)
+  A = identity(n) - _BETA * adj
+  L, U = lu(A, permute_l=True)
+  L_inv = pinv(L)
+  U_inv = pinv(U)
+  A_inv = U_inv.dot(L_inv) 
+  katz = A_inv - identity(n)
+  print "Ended Katz"
+  nodes_index = {}
+  for i, node in enumerate(sorted(trusts.nodes())):
+    nodes_index[node] = i
+  return katz, nodes_index
 
 
 """ Maps two dictionary of values into two vectors in a common space. Each
@@ -167,7 +176,7 @@ def calculate_authoring_similarity(author, voter):
       A dictionary with features represeting connection strength in trust
     netwoek between author and voter.
 """
-def calculate_connection_strength(author, voter, trusts):
+def calculate_connection_strength(author, voter, trusts, katz, nodes_index):
   features = {}
   a_id, v_id = author['id'], voter['id']
   author_trustees = set(trusts.successors(author['id']))
@@ -178,7 +187,8 @@ def calculate_connection_strength(author, voter, trusts):
   features['jacc_trustors'] = jaccard(author_trustors, voter_trustors)
   features['adamic_adar_trustees'] = adamic_adar_trustees(trusts, a_id, v_id)
   features['adamic_adar_trustors'] = adamic_adar_trustors(trusts, a_id, v_id)
-#  features['katz'] = katz(trusts, a_id, v_id)
+  features['katz'] = katz[nodes_index[v_id], nodes_index[a_id]] if v_id in \
+       nodes_index and a_id in nodes_index else 0
   return features
 
 
@@ -215,6 +225,7 @@ def model_author_voter_similarity(train, users, similar):
 """
 def model_author_voter_connection(train, users, trusts):
   conn_features = {}
+  katz, nodes_index = get_katz_matrix(trusts) 
   for vote in train:
     author_id = vote['reviewer']
     voter_id = vote['voter']
@@ -222,7 +233,8 @@ def model_author_voter_connection(train, users, trusts):
       author_id not in trusts[voter_id]:
       continue
     conn_features[(author_id, voter_id)] = \
-        calculate_connection_strength(users[author_id], users[voter_id], trusts)
+        calculate_connection_strength(users[author_id], users[voter_id], trusts,
+        katz, nodes_index)
 
   return conn_features
 

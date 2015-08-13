@@ -4,10 +4,10 @@ import unittest
 import numpy as np
 import networkx as nx
 
-import src.author_voter_modeling as av
+import src.modeling.author_voter_modeling as av
 
 class IsolatedJaccardTestCase(unittest.TestCase):
-""" Test case for jaccard coefficient calculation between two sets. """
+  """ Test case for jaccard coefficient calculation between two sets. """
 
   def setUp(self):
     self.set_a = set([1, 3, 4, 6])
@@ -21,8 +21,8 @@ class IsolatedJaccardTestCase(unittest.TestCase):
 
 
 class IsolatedVectorsTestCase(unittest.TestCase):
-""" Test case for obtaining vectors from dictionaries. Each key indicates a new
-    dimension and an undefined one receives value 0. """
+  """ Test case for obtaining vectors from dictionaries. Each key indicates a new
+      dimension and an undefined one receives value 0. """
   def setUp(self):
     self.dict_a = {1: 1, 2: 2, 3: 4}
     self.dict_b = {0: -1, 2: 3, 4: 2}
@@ -35,16 +35,28 @@ class IsolatedVectorsTestCase(unittest.TestCase):
     self.assertListEqual(vec_b.tolist(), self.res_b)
 
 
-class SimpleTestCase(unittest.TestCase):
-""" Simple test case of author and voter, with all dependant functions
-    considered. """
+class IsolatedKatzTestCase(unittest.TestCase):
+  
   def setUp(self):
     self.graph = nx.DiGraph()
-    self.graph.add_edges_from([(3, 1), (4, 1), (1, 5), (1, 6), (1, 7), (2, 6),
+    self.graph.add_edges_from([(2, 1), (2, 3), (3, 1), (4, 2), (4, 3)])
+  
+  def test_katz(self):
+    ls_count = {2: 2, 3: 1}
+    score = sum([0.005 ** l * ls_count[l] for l in ls_count])
+    self.assertAlmostEqual(av.get_katz_matrix(self.graph)[3, 0], score)
+
+
+class SimpleTestCase(unittest.TestCase):
+  """ Simple test case of author and voter, with all dependant functions
+      considered. """
+  def setUp(self):
+    self.graph = nx.DiGraph()
+    self.graph.add_edges_from([(3, 1), (4, 1), (1, 5), (1, 6), (1, 7),
         (2, 7), (2, 8), (4, 2), (9, 2), (7, 2), (6, 1), (5, 7)])
-    self.author = {'id': 1, 'ratings': {1: 1, 2: 2, 4: 5, 5: 2},
+    self.author = {'id': 2, 'ratings': {1: 1, 2: 2, 4: 5, 5: 2},
         'avg_rating': 2.5}
-    self.voter = {'id': 2, 'ratings': {2: 4, 5: 2, 6: 0}, 'avg_rating': 2}
+    self.voter = {'id': 1, 'ratings': {2: 4, 5: 2, 6: 0}, 'avg_rating': 2}
 
   def test_jaccard_trustees(self):
     set_a, set_b = set([5, 6, 7]), set([6, 7, 8])
@@ -67,7 +79,7 @@ class SimpleTestCase(unittest.TestCase):
     self.assertListEqual(vec_b.tolist(), [0, 4, 0, 2, 0])
 
   def test_adamic_adar_trustees(self):
-    nodes = [6, 7]
+    nodes = [7]
     score = sum([1.0 / log(self.graph.in_degree(u) + self.graph.out_degree(u))
       for u in nodes])
     self.assertEqual(av.adamic_adar_trustees(self.graph, 1, 2), score)
@@ -78,32 +90,29 @@ class SimpleTestCase(unittest.TestCase):
       for u in nodes])
     self.assertEqual(av.adamic_adar_trustors(self.graph, 1, 2), score)
 
-  def test_katz(self):
-    ls = [2, 3]
-    ls_count = {2: 2, 3: 1}
-    score = sum([0.005 * ls_count[l] for l in ls])
-    self.assertEqual(av.katz(self.graph, 1, 2), score)
-
   def test_connection_strength(self):
+    katz = av.get_katz_matrix(self.graph)
     features = av.calculate_connection_strength(self.author, self.voter,
-        self.graph)
+        self.graph, katz)
     answer = {}
-    inter_trustees = [6, 7]
+    inter_trustees = [7]
     union_trustees = [5, 6, 7, 8]
     answer['jacc_trustees'] = float(len(inter_trustees)) / len(union_trustees)
     inter_trustors = [4]
     union_trustors = [3, 4, 6, 7, 9]
     answer['jacc_trustors'] = float(len(inter_trustors)) / len(union_trustors)
-    nodes = [6, 7]
+    nodes = [7]
     answer['adamic_adar_trustees'] = sum([1.0 / log(self.graph.in_degree(u) + 
         self.graph.out_degree(u)) for u in nodes])
     nodes = [4]
     answer['adamic_adar_trustors'] = sum([1.0 / log(self.graph.in_degree(u) + 
         self.graph.out_degree(u)) for u in nodes])
-    ls = [2, 3]
-    ls_count = {2: 2, 3: 1}
-    answer['katz'] = sum([0.005 * ls_count[l] for l in ls]) 
-    self.assertDictEqual(features, answer)
+    ls_count = {2: 1, 3: 1}
+    for l in xrange(4, 1000, 2):
+      ls_count[l] = ls_count[l+1] = l / 2
+    answer['katz'] = sum([0.005**l * ls_count[l] for l in ls_count]) 
+    for feature in features:
+      self.assertAlmostEqual(features[feature], answer[feature])
 
   def test_authoring_similarity(self):
     features = av.calculate_authoring_similarity(self.author, self.voter)

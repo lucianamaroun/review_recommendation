@@ -12,11 +12,11 @@
 import numpy as np
 from math import sqrt
 
-from src.modeling import model
-from src.author_voter_modeling import model_author_voter_similarity, \
+from src.modeling.modeling import model
+from src.modeling.author_voter_modeling import model_author_voter_similarity, \
     model_author_voter_connection
-from src.user_modeling import get_similar_users
-from src.parser import parse_trusts
+from src.modeling.user_modeling import get_similar_users
+from src.parsing.parser import parse_trusts
 from cap.models import EntityScalarGroup, EntityArrayGroup, \
     InteractionScalarGroup, EntityScalarParameter, EntityArrayParameter, \
     InteractionScalarParameter, ScalarVarianceParameter, \
@@ -57,7 +57,7 @@ def create_variables():
         InteractionScalarParameter('r', (7, 1)), 
         ScalarVarianceParameter('var_gamma'), var_H),
     'lambda': InteractionScalarGroup('lambda', ('reviewer', 'voter'),
-        InteractionScalarParameter('h', (4, 1)), 
+        InteractionScalarParameter('h', (5, 1)), 
         ScalarVarianceParameter('var_lambda'), var_H)
   }
   variables['u'].set_pair_name('v')
@@ -158,30 +158,30 @@ def calculate_predictions(groups, test, reviews, users, users_sim, users_conn):
 def main():
   import pickle
   print 'Reading pickles'
- # reviews, users, _, train, test = model()
- # pickle.dump(reviews, open('pkl/cap_reviews2.pkl', 'w'))
- # pickle.dump(users, open('pkl/cap_users2.pkl', 'w'))
- # pickle.dump(train, open('pkl/cap_train2.pkl', 'w'))
- # pickle.dump(test, open('pkl/cap_test2.pkl', 'w'))
-  reviews = pickle.load(open('pkl/cap_reviews2.pkl', 'r'))
-  users = pickle.load(open('pkl/cap_users2.pkl', 'r'))
-  train = pickle.load(open('pkl/cap_train2.pkl', 'r'))
-  test = pickle.load(open('pkl/cap_test2.pkl', 'r'))
+  reviews, users, _, train, test = model()
+  pickle.dump(reviews, open('pkl/cap_reviews2.pkl', 'w'))
+  pickle.dump(users, open('pkl/cap_users2.pkl', 'w'))
+  pickle.dump(train, open('pkl/cap_train2.pkl', 'w'))
+  pickle.dump(test, open('pkl/cap_test2.pkl', 'w'))
+ # reviews = pickle.load(open('pkl/cap_reviews2.pkl', 'r'))
+ # users = pickle.load(open('pkl/cap_users2.pkl', 'r'))
+ # train = pickle.load(open('pkl/cap_train2.pkl', 'r'))
+ # test = pickle.load(open('pkl/cap_test2.pkl', 'r'))
   
- # similar = get_similar_users(users)
- # trusts = parse_trusts()
- # pickle.dump(similar, open('pkl/cap_similar2.pkl', 'w'))
- # pickle.dump(trusts, open('pkl/cap_trusts2.pkl', 'w'))
-  similar = pickle.load(open('pkl/cap_similar2.pkl', 'r'))
-  trusts = pickle.load(open('pkl/cap_trusts2.pkl', 'r'))
+  similar = get_similar_users(users)
+  trusts = parse_trusts()
+  pickle.dump(similar, open('pkl/cap_similar2.pkl', 'w'))
+  pickle.dump(trusts, open('pkl/cap_trusts2.pkl', 'w'))
+ # similar = pickle.load(open('pkl/cap_similar2.pkl', 'r'))
+ # trusts = pickle.load(open('pkl/cap_trusts2.pkl', 'r'))
   
   print 'Modeling interaction'
- # sim_author_voter = model_author_voter_similarity(train, users, similar)
- # pickle.dump(sim_author_voter, open('pkl/cap_sim_author_voter22.pkl', 'w'))
-  sim_author_voter = pickle.load(open('pkl/cap_sim_author_voter22.pkl', 'r'))
- # conn_author_voter = model_author_voter_connection(train, users, trusts)
- # pickle.dump(conn_author_voter, open('pkl/cap_conn_author_voter22.pkl', 'w'))
-  conn_author_voter = pickle.load(open('pkl/cap_conn_author_voter22.pkl', 'r'))
+  sim_author_voter = model_author_voter_similarity(train, users, similar)
+  pickle.dump(sim_author_voter, open('pkl/cap_sim_author_voter22.pkl', 'w'))
+ # sim_author_voter = pickle.load(open('pkl/cap_sim_author_voter22.pkl', 'r'))
+  conn_author_voter = model_author_voter_connection(train, users, trusts)
+  pickle.dump(conn_author_voter, open('pkl/cap_conn_author_voter22.pkl', 'w'))
+ # conn_author_voter = pickle.load(open('pkl/cap_conn_author_voter22.pkl', 'r'))
   
   print 'Creating variables'
   variables = create_variables()
