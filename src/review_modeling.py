@@ -7,6 +7,8 @@
       Used only as a module, not directly callable.
 """
 
+from pymongo import MongoClient
+from IPython import embed
 
 from string import punctuation
 from math import log
@@ -39,6 +41,8 @@ _PUNCTUATION = set(['!', '?', ':', ';', ',', '.'])
     # source: http://www.nltk.org/api/nltk.tokenize.html
 _SYMBOLS = punctuation
 
+client = MongoClient('mongodb://localhost:27017/')
+reviews_db = client.review_rec.reviews
 
 """ Models a review.
 
@@ -55,7 +59,8 @@ def model_review(raw_review):
       return None
     text_feat = get_textual_features(review['text'])
     for feat in text_feat:
-        review[feat] = text_feat[feat]
+        review[feat] = text_feat[feat]    
+    reviews_db.insert_one(review)
     return review
   except Exception as e:
     traceback.print_exc()
@@ -277,9 +282,9 @@ def group_reviews_by_product(reviews):
 """
 def calculate_kl_divergence(reviews):
   grouped_reviews = group_reviews_by_product(reviews)
-
   avg_unigram = {}
   total_words = 0
+
   for product in grouped_reviews:
     for review in grouped_reviews[product]:
       review['unigram'], num_words = get_unigram_model(review['text'])
@@ -289,7 +294,7 @@ def calculate_kl_divergence(reviews):
         avg_unigram[word] += review['unigram'][word]
       total_words += num_words
     for word in avg_unigram:
-      avg_unigram[word] = avg_unigram[word] / total_words if total_words else 0
+      avg_unigram[word] = float(avg_unigram[word]) / total_words if total_words else 0
     for review in grouped_reviews[product]:
       review['kl'] = 0
       for word in review['unigram']:
@@ -297,8 +302,32 @@ def calculate_kl_divergence(reviews):
           continue
         review['kl'] += review['unigram'][word] * log(review['unigram'][word] /
             avg_unigram[word])
-      review.pop('unigram', None)
+      # review.pop('unigram', None)
 
+def calculate_kl_divergence_mongo():  
+  print("using mongo")
+  avg_unigram = {}
+  total_words = 0
+  distinct_products = reviews_db.distinct("product")
+  for product in distinct_products:
+    for review in reviews_db.find({"product": product}):
+      review['unigram'], num_words = get_unigram_model(review['text'])
+      reviews_db.update({'_id': review["_id"]} , {"$set": review}, upsert=True)
+      for word in review['unigram']:
+        if word not in avg_unigram:
+          avg_unigram[word] = 0
+        avg_unigram[word] += review['unigram'][word]
+      total_words += num_words
+    for word in avg_unigram:
+      avg_unigram[word] = float(avg_unigram[word]) / total_words if total_words else 0
+    for review in reviews_db.find({"product": product}):
+      review['kl'] = 0
+      for word in review['unigram']:
+        if not avg_unigram[word]:
+          continue
+        review['kl'] += review['unigram'][word] * log(review['unigram'][word] /
+            avg_unigram[word])
+      reviews_db.update({'_id': review["_id"]} , {"$set": review}, upsert=True)
 
 """ Gets an unigram model for a given text.
 
@@ -314,6 +343,7 @@ def calculate_kl_divergence(reviews):
 """
 def get_unigram_model(text):
   unigram = {}
+  text =  text.replace(".", " ")
   text_blob = TextBlob(text)
 
   for word in text_blob.words:
@@ -391,7 +421,8 @@ def model_reviews_parallel(num_threads, sample_raw_reviews=None):
   result = [review for review in result if review]
   reviews = {review['id']:review for review in result}
 
-  calculate_kl_divergence(reviews)
+  calculate_kl_divergence_mongo()
+  calculate_kl_divergence(reviews)  
   calculate_rel_rating(reviews)
 
   return reviews
