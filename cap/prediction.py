@@ -12,7 +12,7 @@
 import numpy as np
 from math import sqrt
 
-from src.modeling.modeling import model
+from src.modeling.modeling import model, _SAMPLE_RATIO
 from src.modeling.author_voter_modeling import model_author_voter_similarity, \
     model_author_voter_connection
 from src.modeling.user_modeling import get_similar_users
@@ -158,30 +158,30 @@ def calculate_predictions(groups, test, reviews, users, users_sim, users_conn):
 def main():
   import pickle
   print 'Reading pickles'
-  reviews, users, _, train, test = model()
-  pickle.dump(reviews, open('pkl/cap_reviews2.pkl', 'w'))
-  pickle.dump(users, open('pkl/cap_users2.pkl', 'w'))
-  pickle.dump(train, open('pkl/cap_train2.pkl', 'w'))
-  pickle.dump(test, open('pkl/cap_test2.pkl', 'w'))
- # reviews = pickle.load(open('pkl/cap_reviews2.pkl', 'r'))
- # users = pickle.load(open('pkl/cap_users2.pkl', 'r'))
- # train = pickle.load(open('pkl/cap_train2.pkl', 'r'))
- # test = pickle.load(open('pkl/cap_test2.pkl', 'r'))
+ # reviews, users, _, train, test = model()
+ # pickle.dump(reviews, open('pkl/cap_reviews%f.pkl' % _SAMPLE_RATIO, 'w'))
+ # pickle.dump(users, open('pkl/cap_users%f.pkl' % _SAMPLE_RATIO, 'w'))
+ # pickle.dump(train, open('pkl/cap_train%f.pkl' % _SAMPLE_RATIO, 'w'))
+ # pickle.dump(test, open('pkl/cap_test%f.pkl' % _SAMPLE_RATIO, 'w'))
+  reviews = pickle.load(open('pkl/cap_reviews%f.pkl' % _SAMPLE_RATIO, 'r'))
+  users = pickle.load(open('pkl/cap_users%f.pkl' % _SAMPLE_RATIO, 'r'))
+  train = pickle.load(open('pkl/cap_train%f.pkl' % _SAMPLE_RATIO, 'r'))
+  test = pickle.load(open('pkl/cap_test%f.pkl' % _SAMPLE_RATIO, 'r'))
   
-  similar = get_similar_users(users)
-  trusts = parse_trusts()
-  pickle.dump(similar, open('pkl/cap_similar2.pkl', 'w'))
-  pickle.dump(trusts, open('pkl/cap_trusts2.pkl', 'w'))
- # similar = pickle.load(open('pkl/cap_similar2.pkl', 'r'))
- # trusts = pickle.load(open('pkl/cap_trusts2.pkl', 'r'))
+ # similar = get_similar_users(users)
+ # trusts = parse_trusts()
+ # pickle.dump(similar, open('pkl/cap_similar%f.pkl' % _SAMPLE_RATIO, 'w'))
+ # pickle.dump(trusts, open('pkl/cap_trusts%f.pkl' % _SAMPLE_RATIO, 'w'))
+  similar = pickle.load(open('pkl/cap_similar%f.pkl' % _SAMPLE_RATIO, 'r'))
+  trusts = pickle.load(open('pkl/cap_trusts%f.pkl' % _SAMPLE_RATIO, 'r'))
   
   print 'Modeling interaction'
-  sim_author_voter = model_author_voter_similarity(train, users, similar)
-  pickle.dump(sim_author_voter, open('pkl/cap_sim_author_voter22.pkl', 'w'))
- # sim_author_voter = pickle.load(open('pkl/cap_sim_author_voter22.pkl', 'r'))
-  conn_author_voter = model_author_voter_connection(train, users, trusts)
-  pickle.dump(conn_author_voter, open('pkl/cap_conn_author_voter22.pkl', 'w'))
- # conn_author_voter = pickle.load(open('pkl/cap_conn_author_voter22.pkl', 'r'))
+ # sim_author_voter = model_author_voter_similarity(train, users, similar)
+ # pickle.dump(sim_author_voter, open('pkl/cap_sim_author_voter%f.pkl' % _SAMPLE_RATIO, 'w'))
+  sim_author_voter = pickle.load(open('pkl/cap_sim_author_voter%f.pkl' % _SAMPLE_RATIO, 'r'))
+ # conn_author_voter = model_author_voter_connection(train, users, trusts)
+ # pickle.dump(conn_author_voter, open('pkl/cap_conn_author_voter%f.pkl' % _SAMPLE_RATIO, 'w'))
+  conn_author_voter = pickle.load(open('pkl/cap_conn_author_voter%f.pkl' % _SAMPLE_RATIO, 'r'))
   
   print 'Creating variables'
   variables = create_variables()
@@ -190,7 +190,7 @@ def main():
   
   print 'Running EM'
   expectation_maximization(variables, train)
-  pickle.dump(variables, open('pkl/cap_variables01.pkl', 'w'))
+  pickle.dump(variables, open('pkl/cap_variables%f.pkl' % _SAMPLE_RATIO, 'w'))
   #variables = pickle.load(open('pkl/cap_variables.pkl', 'r'))
   #train_truth = [t['vote'] for t in train]
   #overall_avg = float(sum(train_truth)) / len(train_truth)

@@ -106,6 +106,7 @@ def gibbs_sample(groups, votes, n_samples):
     for g_name in sorted(groups.keys()):
       group = groups[g_name]
       for variable in group.iter_variables():
+          # make it a polymorphic function and avoid isinstance
         if isinstance(variable, ScalarVariable):
           mean, var = variable.get_cond_mean_and_var(groups, votes)
           variable.add_sample(normal(mean, sqrt(var)))

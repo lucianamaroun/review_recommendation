@@ -70,7 +70,7 @@ def sigmoid_der2(value):
   except Exception:
     return 0
 
-def newton_raphson(fun, der, variable_group, theta_0, mse, n_iter=50, eps=1e-8,
+def newton_raphson(fun, der, variable_group, theta_0, n_iter=50, eps=1e-8, 
     step=1):
   """ Applies Newton-Raphson's Method. This method finds an approximation for a 
       root of a function numerically by continuously updating acording to the
@@ -85,6 +85,11 @@ def newton_raphson(fun, der, variable_group, theta_0, mse, n_iter=50, eps=1e-8,
         der: function which evaluates over theta and represents the derivative.
         theta_0: value of initial theta.
         n_iter: number of iterations to perform.
+        eps: tolerance for difference to zero.
+        step: update rate.
+
+      Returns:
+        The approximated value for root of the function.
   """
   theta_n = theta_0 - pinv(der(theta_0, variable_group)) \
       .dot(fun(theta_0, variable_group))

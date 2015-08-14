@@ -14,7 +14,7 @@ from math import log, isnan
 import numpy as np
 from numpy import identity
 from numpy.linalg import pinv, inv
-import networkx as nx
+from networkx import adjacency_matrix, weakly_connected_component_subgraphs
 from scipy.stats import pearsonr
 from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import splu
@@ -95,19 +95,29 @@ def adamic_adar_trustees(trusts, user_a, user_b):
       A matrix indexed by node ids with katz index of each pair. 
 """      
 def get_katz_matrix(trusts):
-  adj = csc_matrix(nx.adjacency_matrix(trusts, sorted(trusts.nodes())))
-  n = trusts.number_of_nodes()
-  print "Computing Katz %dx%d" % (n, n)
-  A = identity(n) - _BETA * adj
-  L, U = lu(A, permute_l=True)
-  L_inv = pinv(L)
-  U_inv = pinv(U)
-  A_inv = U_inv.dot(L_inv) 
-  katz = A_inv - identity(n)
-  print "Ended Katz"
+ # adj = csc_matrix(nx.adjacency_matrix(trusts, sorted(trusts.nodes())))
+ # n = trusts.number_of_nodes()
+ # A = identity(n) - _BETA * adj
+ # L, U = lu(A, permute_l=True)
+ # L_inv = pinv(L)
+ # U_inv = pinv(U)
+ # A_inv = U_inv.dot(L_inv) 
+ # katz = A_inv - identity(n)
+ # print "Ended Katz"
+ # nodes_index = {}
+ # for i, node in enumerate(sorted(trusts.nodes())):
+ #   nodes_index[node] = i
+  katz = {}
   nodes_index = {}
-  for i, node in enumerate(sorted(trusts.nodes())):
-    nodes_index[node] = i
+  comps = weakly_connected_component_subgraphs(trusts)
+  for i, comp in enumerate(comps):
+    n = comp.number_of_nodes()
+    if n > 1:
+      print "%d - Computing Katz %dx%d" % (i, n, n)
+      A = adjacency_matrix(comp, sorted(comp.nodes()))
+      for j, node in enumerate(sorted(comp.nodes())):
+        nodes_index[node] = (i, j) # first component, then index inside
+      katz[i] = pinv(identity(n) - _BETA * A) - identity(n)
   return katz, nodes_index
 
 
@@ -187,8 +197,12 @@ def calculate_connection_strength(author, voter, trusts, katz, nodes_index):
   features['jacc_trustors'] = jaccard(author_trustors, voter_trustors)
   features['adamic_adar_trustees'] = adamic_adar_trustees(trusts, a_id, v_id)
   features['adamic_adar_trustors'] = adamic_adar_trustors(trusts, a_id, v_id)
-  features['katz'] = katz[nodes_index[v_id], nodes_index[a_id]] if v_id in \
-       nodes_index and a_id in nodes_index else 0
+  features['katz'] = 0
+ # if a_id in nodes_index and v_id in nodes_index:
+ #   a_comp, a_index = nodes_index[a_id]
+ #   v_comp, v_index = nodes_indes[v_id]
+ #   if a_comp == v_comp:
+ #     features['katz'] = katz[a_comp][v_index,a_index]
   return features
 
 
@@ -225,7 +239,7 @@ def model_author_voter_similarity(train, users, similar):
 """
 def model_author_voter_connection(train, users, trusts):
   conn_features = {}
-  katz, nodes_index = get_katz_matrix(trusts) 
+  katz, nodes_index = None, None # get_katz_matrix(trusts) 
   for vote in train:
     author_id = vote['reviewer']
     voter_id = vote['voter']

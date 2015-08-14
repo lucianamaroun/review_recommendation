@@ -165,12 +165,13 @@ class PredictionVarianceParameter(ScalarVarianceParameter):
           variables empiric variances.
     
         Args:
-          gropus: list of variable group which determines the predicted value.
+          groups: list of variable group which determines the predicted value.
+          votes: list of votes in training set.
            
         Returns:
           None, but the value field of the parameter is updated.
     """
-    size = groups.itervalues().next().get_size()
+    size = len(votes) 
     sse = 0
     var_sum = 0
     for vote in votes:
@@ -186,14 +187,14 @@ class PredictionVarianceParameter(ScalarVarianceParameter):
           # V(XY) = V(X)V(Y) + V(X)E(Y)^2 + V(Y)E(X)^2
           # dot product is the sum of variable products
           # dimensions are considered to be uncorrelated
-          prod_var = 0
+          dot_var = 0
           for i in xrange(const.K):
             var_x = inst.empiric_var.reshape(-1).tolist()[i]
             var_y = pair_inst.empiric_var.reshape(-1).tolist()[i]
-            prod_var += var_x * var_y
-            prod_var += var_x * pair_inst.empiric_mean.reshape(-1).tolist()[i]
-            prod_var += var_y * inst.empiric_mean.reshape(-1).tolist()[i]
-          var_sum += prod_var
+            dot_var += var_x * var_y
+            dot_var += var_x * pair_inst.empiric_mean.reshape(-1).tolist()[i]**2
+            dot_var += var_y * inst.empiric_mean.reshape(-1).tolist()[i]**2
+          var_sum += dot_var
         elif inst:
           pred += inst.empiric_mean
           var_sum += inst.empiric_var
@@ -378,16 +379,16 @@ class InteractionScalarParameter(Parameter):
           None, but the value field of the parameter is updated.
     """
     new_value = newton_raphson(self.get_derivative_1, self.get_derivative_2, 
-        variable_group, self.value, self.mse)
+        variable_group, self.value)
     self.update(new_value) 
 
-  def mse(self, value, variable_group):
-    mse = 0.0
-    for variable in variable_group.iter_variables():
-      for sample in variable.samples:
-        mse += (sample - sigmoid(value.T.dot(variable.features)[0,0])) ** 2
-    mse /= variable_group.size * variable.num_samples
-    return mse
+#  def mse(self, value, variable_group):
+#    mse = 0.0
+#    for variable in variable_group.iter_variables():
+#      for sample in variable.samples:
+#        mse += (sample - sigmoid(value.T.dot(variable.features)[0,0])) ** 2
+#    mse /= variable_group.size * variable.num_samples
+#    return mse
 
   def get_derivative_1(self, value, variable_group):
     """ Gets the first derivative of the expectation with respect to the
