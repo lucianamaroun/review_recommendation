@@ -189,7 +189,8 @@ def main():
       conn_author_voter)
   
   print 'Running EM'
-  expectation_maximization(variables, train)
+  train_dict = {i:t for i, t in enumerate(train)}
+  expectation_maximization(variables, train_dict)
   pickle.dump(variables, open('pkl/cap_variables%f.pkl' % _SAMPLE_RATIO, 'w'))
   #variables = pickle.load(open('pkl/cap_variables.pkl', 'r'))
   #train_truth = [t['vote'] for t in train]

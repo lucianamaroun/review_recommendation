@@ -174,7 +174,7 @@ class PredictionVarianceParameter(ScalarVarianceParameter):
     size = len(votes) 
     sse = 0
     var_sum = 0
-    for vote in votes:
+    for vote in votes.itervalues():
       truth = vote['vote']
       pred = 0
       for g in groups.itervalues():
@@ -475,6 +475,9 @@ class Variable(Value):
     self.num_samples = 0
     self.empiric_mean = None
     self.empiric_var = None
+    self.related_votes = None
+    self.num_votes = None
+    self.cond_var = None
 
   def add_sample(self, value):
     """ Add a sample of this variable to the list of samples.
@@ -518,8 +521,7 @@ class Variable(Value):
           The value of rest, which is equal to the truth value minus all other
         terms.
     """    
-    truth = vote['vote']
-    rest = truth
+    rest = vote['vote']
     names = groups.keys()[:]
     self_group = groups[self.name]
     for name in names:
@@ -543,6 +545,7 @@ class Variable(Value):
   def reset_samples(self):
     self.num_samples = 0
     self.samples = []
+    self.cond_var = None
 
 
 class ScalarVariable(Variable):
@@ -673,20 +676,25 @@ class EntityScalarVariable(ScalarVariable):
         Returns:
           A 2-tuple with the mean and variance, both floats.
     """
-    related_votes = [v for v in votes if v[self.e_type] == self.entity_id]
+    if self.related_votes is None:
+      self.related_votes = [i for i in votes if votes[i][self.e_type] == 
+          self.entity_id]
+      self.num_votes = len(self.related_votes)
     variance = 0.0
     mean = 0.0
     var_group = groups[self.name]
-    for vote in related_votes:
+    for i in self.related_votes:
+      vote = votes[i]
       rest = self.get_rest_value(groups, vote)
       mean += rest
     mean /= var_group.var_H.value
-    variance = 1.0 / (1.0 / var_group.var_param.value + \
-        len(related_votes) / var_group.var_H.value)
+    if self.cond_var is None:
+      self.cond_var = 1.0 / (1.0 / var_group.var_param.value + \
+          float(self.num_votes) / var_group.var_H.value)
     dot = var_group.weight_param.value.T.dot(self.features)[0,0] \
         / var_group.var_param.value
-    mean = variance * (mean + dot)
-    return mean, variance
+    mean = self.cond_var * (mean + dot)
+    return mean, self.cond_var
 
 
 class EntityArrayVariable(ArrayVariable):
@@ -707,6 +715,8 @@ class EntityArrayVariable(ArrayVariable):
     """
     super(EntityArrayVariable, self).__init__(name, shape, entity_id, e_type,
         features)
+    #self.inv_var = None
+    #self.var_dot = None
 
   def get_cond_mean_and_var(self, groups, votes):
     """ Calculates the conditional mean and variance of this variable.
@@ -723,22 +733,34 @@ class EntityArrayVariable(ArrayVariable):
           A 2-tuple with the mean, a vector of size K, and variance, a
         covariance matrix of shape (K, K).
     """
-    related_votes = [v for v in votes if v[self.e_type] == self.entity_id]
+    if self.related_votes is None:
+      self.related_votes = [i for i in votes if votes[i][self.e_type] == 
+          self.entity_id]
+      self.num_votes = len(self.related_votes)
     variance = zeros((const.K, const.K))
     mean = zeros((const.K, 1))
     var_group = groups[self.name]
     pair_group = groups[var_group.pair_name]
+    #if self.inv_var is None:
     var_matrix = var_group.var_param.value * identity(const.K)
     inv_var = pinv(var_matrix)
-    for vote in related_votes:
+    for i in self.related_votes:
+      vote = votes[i]
       rest = self.get_rest_value(groups, vote)
       pair_value = pair_group.get_instance(vote).get_last_sample()
       variance += pair_value.dot(pair_value.T)
       mean += rest * pair_value
     variance = pinv(variance / var_group.var_H.value + inv_var)
-    dot = inv_var.dot(var_group.weight_param.value).dot(self.features)
-    mean = variance.dot(dot + mean / var_group.var_H.value)
+    #if self.var_dot is None:
+    var_dot = inv_var.dot(var_group.weight_param.value) \
+        .dot(self.features)
+    mean = variance.dot(var_dot + mean / var_group.var_H.value)
     return mean, variance
+
+  def reset_samples(self):
+    super(EntityArrayVariable, self).reset_samples()
+    #self.inv_var = None
+    #self.var_dot = None
 
 
 class InteractionScalarVariable(ScalarVariable):
@@ -773,22 +795,25 @@ class InteractionScalarVariable(ScalarVariable):
           A 2-tuple with the mean and variance, both float values.
     """
     # use index to find related votes
-    related_votes = [v for v in votes if v[self.e_type[0]] == self.entity_id[0]
-        and v[self.e_type[1]] == self.entity_id[1]]
+    if self.related_votes is None:
+      self.related_votes = [i for i in votes if votes[i][self.e_type[0]] == 
+          self.entity_id[0] and votes[i][self.e_type[1]] == self.entity_id[1]]
+      self.num_votes = len(self.related_votes)
     variance = 0.0
     mean = 0.0
     var_group = groups[self.name]
-    for vote in related_votes:
+    for i in self.related_votes:
+      vote = votes[i]
       rest = self.get_rest_value(groups, vote)
-      variance += 1.0
       mean += rest
     mean /= var_group.var_H.value
-    variance /= var_group.var_H.value
-    variance = 1.0 / (1.0/var_group.var_param.value + variance)
+    if self.cond_var is None: 
+      self.cond_var = 1.0 / (1.0 / var_group.var_param.value + \
+          float(self.num_votes) / var_group.var_H.value)
     mean += sigmoid(var_group.weight_param.value.T.dot(self.features)[0,0]) \
         / var_group.var_param.value
-    mean *= variance
-    return mean, variance
+    mean *= self.cond_var 
+    return mean, self.cond_var
 
 
 class Group(object):
