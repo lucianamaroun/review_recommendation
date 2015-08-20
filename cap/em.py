@@ -6,6 +6,8 @@
     Usage: this module is not directly executed.
 """
 
+from time import time
+
 from numpy.random import normal, multivariate_normal
 from math import sqrt
 import numpy as np
@@ -30,39 +32,39 @@ def expectation_maximization(groups, votes):
   """ 
   for i in xrange(const.EM_ITER_FIRST):
     print "EM iteration %d" % i
-    print "E-step ",
+    print "E-step"
     e_time = time()
     perform_e_step(groups, votes, const.GIBBS_SAMPLES_FIRST)
-    print time() - e_time
-    print "M-step ",
+    print "E-step Time:\t%f" % (time() - e_time)
+    print "M-step"
     m_time = time()
     perform_m_step(groups, votes)
-    print time() - m_time
-    print "Total %f" % time() - e_time
+    print "M-step Time:\t%f" % (time() - m_time)
+    print "Total:\t\t%f" % (time() - e_time)
     print "------------------------"
   for i in xrange(const.EM_ITER_SECOND):
     print "EM iteration %d" % (const.EM_ITER_FIRST + i)
-    print "E-step ",
+    print "E-step"
     e_time = time()
     perform_e_step(groups, votes, const.GIBBS_SAMPLES_SECOND)
-    print time() - e_time
-    print "M-step ",
+    print "E-step Time:\t%f" % (time() - e_time)
+    print "M-step"
     m_time = time()
     perform_m_step(groups, votes)
-    print time() - m_time
-    print "Total %f" % time() - e_time
+    print "M-step Time:\t%f" % (time() - m_time)
+    print "Total:\t\t%f" % (time() - e_time)
     print "------------------------"
   for i in xrange(const.EM_ITER_THIRD):
     print "EM iteration %d" % (const.EM_ITER_FIRST + const.EM_ITER_SECOND + i)
-    print "E-step ",
+    print "E-step"
     e_time = time()
     perform_e_step(groups, votes, const.GIBBS_SAMPLES_THIRD)
-    print time() - e_time
-    print "M-step ",
+    print "E-step Time:\t%f" % (time() - e_time)
+    print "M-step"
     m_time = time()
     perform_m_step(groups, votes)
-    print time() - m_time
-    print "Total %f" % time() - e_time
+    print "M-step Time:\t%f" % (time() - m_time)
+    print "Total:\t\t%f" % (time() - e_time)
     print "------------------------"
 
 

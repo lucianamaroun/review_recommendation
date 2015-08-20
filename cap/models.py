@@ -605,22 +605,22 @@ class ScalarVariable(Variable):
     """
     self.empiric_var = std(self.samples, ddof=1) ** 2
 
-  def sample(self, groups, votes):
-    """ Sample using Gibbs Sample.
-
-        Args:
-          groups: a dict of Group objects.
-          votes: a dict of votes in training set.
-
-        Returns:
-          None. The object is modified with new samples
-    """
-    # TODO: create database index
-    self.load_related_votes(votes) 
-    variance = self.get_cond_var(groups)
-    mean = self.get_cond_mean(groups, votes)
-    self.num_samples += 1
-    self.samples.append(normal(mean, variance))
+#  def sample(self, groups, votes):
+#    """ Sample using Gibbs Sample.
+#
+#        Args:
+#          groups: a dict of Group objects.
+#          votes: a dict of votes in training set.
+#
+#        Returns:
+#          None. The object is modified with new samples
+#    """
+#    # TODO: create database index
+#    self.load_related_votes(votes) 
+#    variance = self.get_cond_var(groups)
+#    mean = self.get_cond_mean(groups, votes)
+#    self.num_samples += 1
+#    self.samples.append(normal(mean, variance))
 
 
 class ArrayVariable(Variable):
@@ -674,23 +674,23 @@ class ArrayVariable(Variable):
     self.empiric_var = reshape(array([[std(samples[:,i], ddof=1) ** 2 for i in
         xrange(n_dim)]]), (n_dim, 1))
 
-  def sample(self, groups, votes):
-    """ Sample using Gibbs Sample.
-
-        Args:
-          groups: a dict of Group objects.
-          votes: a dict of votes in training set.
-
-        Returns:
-          None. The object is modified with new samples
-    """
-    self.load_related_votes(votes)
-    cov = self.get_cond_var(groups, votes)
-    mean = self.get_cond_mean(groups, votes)
-    mean = mean.reshape(-1)
-    value = multivariate_normal(mean, cov).reshape(mean.size, 1)
-    self.num_samples += 1
-    self.samples.append(value)
+#  def sample(self, groups, votes):
+#    """ Sample using Gibbs Sample.
+#
+#        Args:
+#          groups: a dict of Group objects.
+#          votes: a dict of votes in training set.
+#
+#        Returns:
+#          None. The object is modified with new samples
+#    """
+#    self.load_related_votes(votes)
+#    cov = self.get_cond_var(groups, votes)
+#    mean = self.get_cond_mean(groups, votes)
+#    mean = mean.reshape(-1)
+#    value = multivariate_normal(mean, cov).reshape(mean.size, 1)
+#    self.num_samples += 1
+#    self.samples.append(value)
 
   def update(self, new_value):
     super(ArrayVariable, self).update(new_value)
@@ -717,7 +717,7 @@ class EntityScalarVariable(ScalarVariable):
     super(EntityScalarVariable, self).__init__(name, entity_id, e_type,
         features)
 
-  def get_cond_mean(self, groups, votes):
+  def get_cond_mean_and_var(self, groups, votes):
     """ Calculates the conditional mean of this variable.
     
         Observations:
@@ -771,10 +771,10 @@ class EntityArrayVariable(ArrayVariable):
     """
     super(EntityArrayVariable, self).__init__(name, shape, entity_id, e_type,
         features)
-    #self.inv_var = None
-    #self.var_dot = None
+    self.inv_var = None
+    self.var_dot = None
 
-  def get_cond_mean(self, groups, votes):
+  def get_cond_mean_and_var(self, groups, votes):
     """ Calculates the conditional mean of this variable.
     
         Observations:
@@ -789,7 +789,6 @@ class EntityArrayVariable(ArrayVariable):
         Returns:
           The mean, a vector of size K.
     """
-<<<<<<< HEAD
     if self.related_votes is None:
       self.related_votes = [i for i in votes if votes[i][self.e_type] == 
           self.entity_id]
@@ -798,26 +797,26 @@ class EntityArrayVariable(ArrayVariable):
     mean = zeros((const.K, 1))
     var_group = groups[self.name]
     pair_group = groups[var_group.pair_name]
-    #if self.inv_var is None:
-    var_matrix = var_group.var_param.value * identity(const.K)
-    inv_var = pinv(var_matrix)
+    if self.inv_var is None:
+      var_matrix = var_group.var_param.value * identity(const.K)
+      self.inv_var = pinv(var_matrix)
     for i in self.related_votes:
       vote = votes[i]
       rest = self.get_rest_value(groups, vote)
       pair_value = pair_group.get_instance(vote).get_last_sample()
       variance += pair_value.dot(pair_value.T)
       mean += rest * pair_value
-    variance = pinv(variance / var_group.var_H.value + inv_var)
-    #if self.var_dot is None:
-    var_dot = inv_var.dot(var_group.weight_param.value) \
-        .dot(self.features)
-    mean = variance.dot(var_dot + mean / var_group.var_H.value)
+    variance = pinv(variance / var_group.var_H.value + self.inv_var)
+    if self.var_dot is None:
+      self.var_dot = self.inv_var.dot(var_group.weight_param.value) \
+          .dot(self.features)
+    mean = variance.dot(self.var_dot + mean / var_group.var_H.value)
     return mean, variance
 
   def reset_samples(self):
     super(EntityArrayVariable, self).reset_samples()
-    #self.inv_var = None
-    #self.var_dot = None
+    self.inv_var = None
+    self.var_dot = None
 
 
 class InteractionScalarVariable(ScalarVariable):
@@ -837,7 +836,7 @@ class InteractionScalarVariable(ScalarVariable):
     super(InteractionScalarVariable, self).__init__(name, entity_id,
         e_type, features)
  
-  def get_cond_mean(self, groups, votes):
+  def get_cond_mean_and_var(self, groups, votes):
     """ Calculates the conditional mean of this variable.
     
         Observations:
