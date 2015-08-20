@@ -300,6 +300,7 @@ def calculate_kl_divergence_mongo():
   distinct_products = reviews_db.distinct("product")
   for product in distinct_products:
     avg_unigram = {}
+    avg_text = ""
     for review in reviews_db.find({"product": product}):
       review['unigram'] = get_unigram_model(review['text'])
       reviews_db.update({'_id': review["_id"]} , {"$set": review}, upsert=True)
@@ -405,7 +406,7 @@ def model_reviews_parallel(num_threads, sample_raw_reviews=None):
   result = [review for review in result if review]
   reviews = {review['id']:review for review in result}
 
-  calculate_kl_divergence_mongo()
+  #calculate_kl_divergence_mongo()
   calculate_kl_divergence(reviews)  
   calculate_rel_rating(reviews)
 
