@@ -789,7 +789,6 @@ class EntityArrayVariable(ArrayVariable):
         Returns:
           The mean, a vector of size K.
     """
-<<<<<<< HEAD
     if self.related_votes is None:
       self.related_votes = [i for i in votes if votes[i][self.e_type] == 
           self.entity_id]

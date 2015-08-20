@@ -163,23 +163,20 @@ def main():
   pickle.dump(users, open('pkl/cap_users%f.pkl' % _SAMPLE_RATIO, 'w'))
   pickle.dump(train, open('pkl/cap_train%f.pkl' % _SAMPLE_RATIO, 'w'))
   pickle.dump(test, open('pkl/cap_test%f.pkl' % _SAMPLE_RATIO, 'w'))
- # reviews = pickle.load(open('pkl/cap_reviews%f.pkl' % _SAMPLE_RATIO, 'r'))
- # users = pickle.load(open('pkl/cap_users%f.pkl' % _SAMPLE_RATIO, 'r'))
- # train = pickle.load(open('pkl/cap_train%f.pkl' % _SAMPLE_RATIO, 'r'))
- # test = pickle.load(open('pkl/cap_test%f.pkl' % _SAMPLE_RATIO, 'r'))
-  
   similar = get_similar_users(users)
-  trusts = parse_trusts()
   pickle.dump(similar, open('pkl/cap_similar%f.pkl' % _SAMPLE_RATIO, 'w'))
+  trusts = parse_trusts()
   pickle.dump(trusts, open('pkl/cap_trusts%f.pkl' % _SAMPLE_RATIO, 'w'))
- # similar = pickle.load(open('pkl/cap_similar%f.pkl' % _SAMPLE_RATIO, 'r'))
- # trusts = pickle.load(open('pkl/cap_trusts%f.pkl' % _SAMPLE_RATIO, 'r'))
-  
-  print 'Modeling interaction'
   sim_author_voter = model_author_voter_similarity(train, users, similar)
   pickle.dump(sim_author_voter, open('pkl/cap_sim_author_voter%f.pkl' % _SAMPLE_RATIO, 'w'))
   conn_author_voter = model_author_voter_connection(train, users, trusts)
   pickle.dump(conn_author_voter, open('pkl/cap_conn_author_voter%f.pkl' % _SAMPLE_RATIO, 'w'))
+ # reviews = pickle.load(open('pkl/cap_reviews%f.pkl' % _SAMPLE_RATIO, 'r'))
+ # users = pickle.load(open('pkl/cap_users%f.pkl' % _SAMPLE_RATIO, 'r'))
+ # train = pickle.load(open('pkl/cap_train%f.pkl' % _SAMPLE_RATIO, 'r'))
+ # test = pickle.load(open('pkl/cap_test%f.pkl' % _SAMPLE_RATIO, 'r'))
+ # similar = pickle.load(open('pkl/cap_similar%f.pkl' % _SAMPLE_RATIO, 'r'))
+ # trusts = pickle.load(open('pkl/cap_trusts%f.pkl' % _SAMPLE_RATIO, 'r'))
  # sim_author_voter = pickle.load(open('pkl/cap_sim_author_voter%f.pkl' % _SAMPLE_RATIO, 'r'))
  # conn_author_voter = pickle.load(open('pkl/cap_conn_author_voter%f.pkl' % _SAMPLE_RATIO, 'r'))
   
@@ -188,13 +185,13 @@ def main():
   train_dict = {i:vote for i, vote in enumerate(train)}
   populate_variables(variables, reviews, users, train, sim_author_voter,
       conn_author_voter)
-  
-  print 'Running EM'
-  expectation_maximization(variables, train_dict)
   pickle.dump(variables, open('pkl/cap_variables%f.pkl' % _SAMPLE_RATIO, 'w'))
   #variables = pickle.load(open('pkl/cap_variables.pkl', 'r'))
   #train_truth = [t['vote'] for t in train]
   #overall_avg = float(sum(train_truth)) / len(train_truth)
+  
+  print 'Running EM'
+  expectation_maximization(variables, train_dict)
 
   print 'Calculate Predictions'
   pred = calculate_predictions(variables, train, reviews, users, sim_author_voter,

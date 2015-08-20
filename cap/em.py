@@ -6,6 +6,8 @@
     Usage: this module is not directly executed.
 """
 
+from time import time
+
 from numpy.random import normal, multivariate_normal
 from math import sqrt
 import numpy as np
