@@ -71,7 +71,7 @@ def sigmoid_der2(value):
     return 0
 
 def newton_raphson(fun, der, variable_group, theta_0, n_iter=50, eps=1e-8, 
-    step=1):
+    step=0.001):
   """ Applies Newton-Raphson's Method. This method finds an approximation for a 
       root of a function numerically by continuously updating acording to the
       derivative and the function at the current value of the variable. 
@@ -91,15 +91,21 @@ def newton_raphson(fun, der, variable_group, theta_0, n_iter=50, eps=1e-8,
       Returns:
         The approximated value for root of the function.
   """
-  theta_n = theta_0 - pinv(der(theta_0, variable_group)) \
-      .dot(fun(theta_0, variable_group))
+  der_val = der(theta_0, variable_group)
+  fun_val = fun(theta_0, variable_group)
+  inv = pinv(der_val)
+  dot = inv.dot(fun_val)
+  theta_n = theta_0 - step * dot
   i = 1
  # print mse(theta_0, variable_group)
   while i < n_iter and not allclose(theta_n, zeros(theta_0.shape), atol=eps):
     theta_0 = theta_n
    # print mse(theta_0, variable_group)
-    theta_n = theta_0 - step * pinv(der(theta_0, variable_group)) \
-        .dot(fun(theta_0, variable_group))
+    der_val = der(theta_0, variable_group)
+    fun_val = fun(theta_0, variable_group)
+    inv = pinv(der_val)
+    dot = inv.dot(fun_val)
+    theta_n = theta_0 - step * dot
     i += 1
  # print '--------'
  # print mse(theta_n, variable_group)

@@ -7,8 +7,9 @@
 """
 
 import numpy as np
-from numpy import array, random, reshape, mean, std, identity, zeros, diagonal
+from numpy import array, reshape, mean, std, identity, zeros, diagonal
 from numpy.linalg import pinv
+from numpy.random import normal, multivariate_normal, uniform
 
 from cap import const
 from cap.aux import sigmoid, sigmoid_der1, sigmoid_der2, newton_raphson
@@ -53,11 +54,11 @@ class Value(object):
           None.
     """
     if type(self.shape) is int and self.shape == 1:
-      self.value = random.uniform(1e-10, 1e-6)
+      self.value = uniform(1e-10, 1e-6)
     elif type(self.shape) is tuple and len(self.shape) == 2 and \
         type(self.shape[0]) is int and type(self.shape[1]) is int and \
         self.shape[0] > 0 and self.shape[1] > 0:
-      self.value = array([[random.uniform(1e-10, 1e-6) for _ in
+      self.value = array([[uniform(1e-10, 1e-6) for _ in
           range(self.shape[1])] for _ in range(self.shape[0])])
     else:
       raise TypeError('TypeError: shape should be a positive int or a 2-tuple of positive ints.')
@@ -413,8 +414,10 @@ class InteractionScalarParameter(Parameter):
     for variable in variable_group.iter_variables():
       f = variable.features
       dot = value.T.dot(f)[0,0]
+      sig = sigmoid(dot)
+      sig1 = sigmoid_der1(dot)
       for sample in variable.samples:
-        der += (sample - sigmoid(dot)) * sigmoid_der1(dot) * f
+        der += (sample - sig) * sig1 * f
     der *= 1.0 / (variable_group.var_param.value * variable.num_samples)
     return der
 
@@ -441,9 +444,11 @@ class InteractionScalarParameter(Parameter):
     for variable in variable_group.iter_variables():
       f = variable.features
       dot = value.T.dot(f)[0,0]
+      sig = sigmoid(dot)
+      sig1 = sigmoid_der1(dot)
+      sig2 = sigmoid_der2(dot)
       for sample in variable.samples:
-        der += ((sample - sigmoid(dot)) * sigmoid_der2(dot) - \
-            sigmoid_der1(dot) ** 2) * f.dot(f.T)
+        der += ((sample - sig) * sig2 - sig1 ** 2) * variable.feat_matrix 
     der *= 1.0 / (variable_group.var_param.value * variable.num_samples)
     return der 
 
@@ -471,6 +476,7 @@ class Variable(Value):
     self.entity_id = entity_id
     self.e_type = e_type
     self.features = reshape(features, (features.shape[0], 1))
+    self.feat_matrix = self.features.dot(self.features.T) 
     self.samples = []
     self.num_samples = 0
     self.empiric_mean = None
@@ -543,6 +549,15 @@ class Variable(Value):
     return rest
 
   def reset_samples(self):
+    """ Resets sample information after one iteration of E-step.
+
+        Args:
+          None.
+
+        Returns:
+          None. The object is modified with initial values for sample related
+        fields.
+    """ 
     self.num_samples = 0
     self.samples = []
     self.cond_var = None
@@ -590,6 +605,23 @@ class ScalarVariable(Variable):
     """
     self.empiric_var = std(self.samples, ddof=1) ** 2
 
+  def sample(self, groups, votes):
+    """ Sample using Gibbs Sample.
+
+        Args:
+          groups: a dict of Group objects.
+          votes: a dict of votes in training set.
+
+        Returns:
+          None. The object is modified with new samples
+    """
+    # TODO: create database index
+    self.load_related_votes(votes) 
+    variance = self.get_cond_var(groups)
+    mean = self.get_cond_mean(groups, votes)
+    self.num_samples += 1
+    self.samples.append(normal(mean, variance))
+
 
 class ArrayVariable(Variable):
   """ Class defining a latent variable.
@@ -609,6 +641,7 @@ class ArrayVariable(Variable):
     """
     super(ArrayVariable, self).__init__(name, shape, entity_id, e_type,
         features)
+    self.value_matrix = self.value.dot(self.value.T)
 
   def calculate_empiric_mean(self):
     """ Calculates the empiric mean of this variable using the samples, 
@@ -641,6 +674,28 @@ class ArrayVariable(Variable):
     self.empiric_var = reshape(array([[std(samples[:,i], ddof=1) ** 2 for i in
         xrange(n_dim)]]), (n_dim, 1))
 
+  def sample(self, groups, votes):
+    """ Sample using Gibbs Sample.
+
+        Args:
+          groups: a dict of Group objects.
+          votes: a dict of votes in training set.
+
+        Returns:
+          None. The object is modified with new samples
+    """
+    self.load_related_votes(votes)
+    cov = self.get_cond_var(groups, votes)
+    mean = self.get_cond_mean(groups, votes)
+    mean = mean.reshape(-1)
+    value = multivariate_normal(mean, cov).reshape(mean.size, 1)
+    self.num_samples += 1
+    self.samples.append(value)
+
+  def update(self, new_value):
+    super(ArrayVariable, self).update(new_value)
+    self.value_matrix = self.value.dot(self.value.T)
+
 
 class EntityScalarVariable(ScalarVariable):
   """ Class defining a scalar latent variable associated to an entity.
@@ -662,16 +717,17 @@ class EntityScalarVariable(ScalarVariable):
     super(EntityScalarVariable, self).__init__(name, entity_id, e_type,
         features)
 
-  def get_cond_mean_and_var(self, groups, votes):
-    """ Calculates the conditional mean and variance of this variable.
+  def get_cond_mean(self, groups, votes):
+    """ Calculates the conditional mean of this variable.
     
         Observations:
-        - Returns the mean and variance of this variable used by Gibbs Sampling.
+        - Returns the mean of this variable used by Gibbs Sampling.
         - The distribution is conditioned on all other latent variables.
+        - Has to be called after get_cond_var.
 
         Args:
           groups: a dictionary of Group objects.
-          votes: the list of votes (training set).
+          votes: the list of votes related to this variable.
 
         Returns:
           A 2-tuple with the mean and variance, both floats.
@@ -718,21 +774,22 @@ class EntityArrayVariable(ArrayVariable):
     #self.inv_var = None
     #self.var_dot = None
 
-  def get_cond_mean_and_var(self, groups, votes):
-    """ Calculates the conditional mean and variance of this variable.
+  def get_cond_mean(self, groups, votes):
+    """ Calculates the conditional mean of this variable.
     
         Observations:
-        - Returns the mean and variance of this variable used by Gibbs Sampling.
+        - Returns the mean of this variable used by Gibbs Sampling.
         - The distribution is conditioned on all other latent variables.
+        - Should be called only after get_cond_var.
 
         Args:
           groups: a dictionary of Group objects.
-          votes: the list of votes (training set).
+          votes: a dict of votes (training set).
 
         Returns:
-          A 2-tuple with the mean, a vector of size K, and variance, a
-        covariance matrix of shape (K, K).
+          The mean, a vector of size K.
     """
+<<<<<<< HEAD
     if self.related_votes is None:
       self.related_votes = [i for i in votes if votes[i][self.e_type] == 
           self.entity_id]
@@ -780,16 +837,17 @@ class InteractionScalarVariable(ScalarVariable):
     super(InteractionScalarVariable, self).__init__(name, entity_id,
         e_type, features)
  
-  def get_cond_mean_and_var(self, groups, votes):
-    """ Calculates the conditional mean and variance of this variable.
+  def get_cond_mean(self, groups, votes):
+    """ Calculates the conditional mean of this variable.
     
         Observations:
-        - Returns the mean and variance of this variable used by Gibbs Sampling.
+        - Returns the variance of this variable used by Gibbs Sampling.
         - The distribution is conditioned on all other latent variables.
+        - Should be called only after get_cond_mean.
 
         Args:
           groups: a dictionary of Group objects.
-          votes: the list of votes (training set).
+          votes: a dict of votes (training set).
 
         Returns:
           A 2-tuple with the mean and variance, both float values.
