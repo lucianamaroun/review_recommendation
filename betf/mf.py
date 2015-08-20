@@ -1,6 +1,8 @@
 from numpy import nan
 from numpy.random import random
 
+from cap.aux import sigmoid, sigmoid_der1
+
 K = 2
 
 _ITER = 1000    # number of iterations of stochastic gradient descent
@@ -30,10 +32,14 @@ class MF_Model(object):
       for vote in votes:
         u = self.user_map[vote['voter']]
         r = self.review_map[vote['review']]
-        error = vote['vote'] - self.U[u,:].dot(self.R[r,:].T)
+        dot = self.U[u,:].dot(self.R[r,:].T)
+        error = float(vote['vote']) / 5.0 - sigmoid(dot) # normalized in (0,1)
+        der_sig = sigmoid_der1(dot)
         for i in xrange(K):
-          self.U[u,i] += _ALPHA * (2 * error * self.R[r,i] - _BETA * self.U[u,i])
-          self.R[r,i] += _ALPHA * (2 * error * self.U[u,i] - _BETA * self.R[r,i])
+          self.U[u,i] += _ALPHA * (2 * error * der_sig * self.R[r,i] - \
+              _BETA * self.U[u,i])
+          self.R[r,i] += _ALPHA * (2 * error * der_sig * self.U[u,i] - \
+              _BETA * self.R[r,i])
   
   def predict(self, votes):
     pred = []
