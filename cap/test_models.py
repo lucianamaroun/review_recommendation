@@ -1,3 +1,13 @@
+""" Test of Models
+    --------------
+
+    Test variables and parameters models with basic test cases.
+
+    Usage:
+    $ python -m cap.test_models
+"""
+
+
 import unittest
 from numpy import array, reshape, identity, vstack, diagonal, zeros
 from numpy import testing as ntest
@@ -7,6 +17,7 @@ from random import random
 from cap import models
 from cap import const
 from cap import aux
+
 
 class ScalarValueTestCase(unittest.TestCase):
   ''' Test case for a generic scalar value object. '''

@@ -5,7 +5,7 @@
 
 """
 
-K = 10 # size of user and review latent vectors
+K = 5 # size of user and review latent vectors
 
 EM_ITER_FIRST = 5
 EM_ITER_SECOND = 5

@@ -289,9 +289,7 @@ class EntityScalarParameter(Parameter):
         for v in variable_group.iter_variables()])
     y = array([v.empiric_mean for v in variable_group.iter_variables()])
     y = reshape(y, (y.shape[0], 1))
-    inv = pinv(feat_matrix.T.dot(feat_matrix))
-    new_value = pinv(feat_matrix.T.dot(feat_matrix)) \
-        .dot(feat_matrix.T.dot(y))
+    new_value = pinv(feat_matrix.T.dot(feat_matrix)).dot(feat_matrix.T.dot(y))
     self.update(new_value)
 
 
@@ -336,8 +334,7 @@ class EntityArrayParameter(Parameter):
         variable_group.iter_variables()])
     y = array([v.empiric_mean.reshape(-1) for v in 
         variable_group.iter_variables()])
-    inv = pinv(feat_matrix.T.dot(feat_matrix))
-    new_value = y.T.dot(feat_matrix).dot(inv)
+    new_value = y.T.dot(feat_matrix).dot(pinv(feat_matrix.T.dot(feat_matrix)))
     self.update(new_value)
 
 
@@ -484,6 +481,7 @@ class Variable(Value):
     self.related_votes = None
     self.num_votes = None
     self.cond_var = None
+    self.var_dot = None
 
   def add_sample(self, value):
     """ Add a sample of this variable to the list of samples.
@@ -561,7 +559,7 @@ class Variable(Value):
     self.num_samples = 0
     self.samples = []
     self.cond_var = None
-
+    self.var_dot = None
 
 class ScalarVariable(Variable):
   """ Class defining a scalar latent variable.
@@ -581,7 +579,7 @@ class ScalarVariable(Variable):
           None.
     """
     super(ScalarVariable, self).__init__(name, 1, entity_id, e_type, features)
-
+  
   def calculate_empiric_mean(self):
     """ Calculates the empiric mean of this variable using the samples.
 
@@ -604,23 +602,6 @@ class ScalarVariable(Variable):
           None. The empiric variance field is updated in this object.
     """
     self.empiric_var = std(self.samples, ddof=1) ** 2
-
-#  def sample(self, groups, votes):
-#    """ Sample using Gibbs Sample.
-#
-#        Args:
-#          groups: a dict of Group objects.
-#          votes: a dict of votes in training set.
-#
-#        Returns:
-#          None. The object is modified with new samples
-#    """
-#    # TODO: create database index
-#    self.load_related_votes(votes) 
-#    variance = self.get_cond_var(groups)
-#    mean = self.get_cond_mean(groups, votes)
-#    self.num_samples += 1
-#    self.samples.append(normal(mean, variance))
 
 
 class ArrayVariable(Variable):
@@ -674,27 +655,19 @@ class ArrayVariable(Variable):
     self.empiric_var = reshape(array([[std(samples[:,i], ddof=1) ** 2 for i in
         xrange(n_dim)]]), (n_dim, 1))
 
-#  def sample(self, groups, votes):
-#    """ Sample using Gibbs Sample.
-#
-#        Args:
-#          groups: a dict of Group objects.
-#          votes: a dict of votes in training set.
-#
-#        Returns:
-#          None. The object is modified with new samples
-#    """
-#    self.load_related_votes(votes)
-#    cov = self.get_cond_var(groups, votes)
-#    mean = self.get_cond_mean(groups, votes)
-#    mean = mean.reshape(-1)
-#    value = multivariate_normal(mean, cov).reshape(mean.size, 1)
-#    self.num_samples += 1
-#    self.samples.append(value)
+  def add_sample(self, value):
+    """ Adds a sample to the variable. Differently from other variables, it also
+        updates the value_matrix field, the outer product of the most recent
+        sample with itself.
 
-  def update(self, new_value):
-    super(ArrayVariable, self).update(new_value)
-    self.value_matrix = self.value.dot(self.value.T)
+        Args:
+          value: the value of the new sample.
+
+        Returns:
+          None.
+    """
+    super(ArrayVariable, self).add_sample(value)
+    self.value_matrix = value.dot(value.T)
 
 
 class EntityScalarVariable(ScalarVariable):
@@ -718,12 +691,11 @@ class EntityScalarVariable(ScalarVariable):
         features)
 
   def get_cond_mean_and_var(self, groups, votes):
-    """ Calculates the conditional mean of this variable.
+    """ Gets the conditional mean and variance of this variable.
     
         Observations:
         - Returns the mean of this variable used by Gibbs Sampling.
         - The distribution is conditioned on all other latent variables.
-        - Has to be called after get_cond_var.
 
         Args:
           groups: a dictionary of Group objects.
@@ -747,9 +719,10 @@ class EntityScalarVariable(ScalarVariable):
     if self.cond_var is None:
       self.cond_var = 1.0 / (1.0 / var_group.var_param.value + \
           float(self.num_votes) / var_group.var_H.value)
-    dot = var_group.weight_param.value.T.dot(self.features)[0,0] \
+    if self.var_dot is None:
+      self.var_dot = var_group.weight_param.value.T.dot(self.features)[0,0] \
         / var_group.var_param.value
-    mean = self.cond_var * (mean + dot)
+    mean = self.cond_var * (mean + self.var_dot)
     return mean, self.cond_var
 
 
@@ -772,22 +745,21 @@ class EntityArrayVariable(ArrayVariable):
     super(EntityArrayVariable, self).__init__(name, shape, entity_id, e_type,
         features)
     self.inv_var = None
-    self.var_dot = None
 
   def get_cond_mean_and_var(self, groups, votes):
-    """ Calculates the conditional mean of this variable.
+    """ Gets the conditional mean and variance of this variable.
     
         Observations:
         - Returns the mean of this variable used by Gibbs Sampling.
         - The distribution is conditioned on all other latent variables.
-        - Should be called only after get_cond_var.
 
         Args:
           groups: a dictionary of Group objects.
           votes: a dict of votes (training set).
 
         Returns:
-          The mean, a vector of size K.
+          A 2-tuple with the mean, a vector of size K, and the covariance, a
+        matrix of size (K, K).
     """
     if self.related_votes is None:
       self.related_votes = [i for i in votes if votes[i][self.e_type] == 
@@ -803,9 +775,9 @@ class EntityArrayVariable(ArrayVariable):
     for i in self.related_votes:
       vote = votes[i]
       rest = self.get_rest_value(groups, vote)
-      pair_value = pair_group.get_instance(vote).get_last_sample()
-      variance += pair_value.dot(pair_value.T)
-      mean += rest * pair_value
+      pair_var = pair_group.get_instance(vote)
+      variance += pair_var.value_matrix # pair_value.dot(pair_value.T)
+      mean += rest * pair_var.get_last_sample()
     variance = pinv(variance / var_group.var_H.value + self.inv_var)
     if self.var_dot is None:
       self.var_dot = self.inv_var.dot(var_group.weight_param.value) \
@@ -814,13 +786,22 @@ class EntityArrayVariable(ArrayVariable):
     return mean, variance
 
   def reset_samples(self):
+    """ Resets values of fields related to the sampling process, which should be
+        initialized between EM iterations.
+
+        Args:
+          None.
+
+        Returns:
+          None.
+    """
     super(EntityArrayVariable, self).reset_samples()
     self.inv_var = None
-    self.var_dot = None
 
 
 class InteractionScalarVariable(ScalarVariable):
-  """ Class defining a latent variable.
+  """ Class defining a latent variable which is scalar and associated to an
+      interaction of entities.
   """
   
   def __init__(self, name, entity_id, e_type, features): 
@@ -837,12 +818,11 @@ class InteractionScalarVariable(ScalarVariable):
         e_type, features)
  
   def get_cond_mean_and_var(self, groups, votes):
-    """ Calculates the conditional mean of this variable.
+    """ Gets the conditional mean and variance of this variable.
     
         Observations:
         - Returns the variance of this variable used by Gibbs Sampling.
         - The distribution is conditioned on all other latent variables.
-        - Should be called only after get_cond_mean.
 
         Args:
           groups: a dictionary of Group objects.
@@ -851,7 +831,7 @@ class InteractionScalarVariable(ScalarVariable):
         Returns:
           A 2-tuple with the mean and variance, both float values.
     """
-    # use index to find related votes
+    # TODO: use index to find related votes
     if self.related_votes is None:
       self.related_votes = [i for i in votes if votes[i][self.e_type[0]] == 
           self.entity_id[0] and votes[i][self.e_type[1]] == self.entity_id[1]]
@@ -867,9 +847,10 @@ class InteractionScalarVariable(ScalarVariable):
     if self.cond_var is None: 
       self.cond_var = 1.0 / (1.0 / var_group.var_param.value + \
           float(self.num_votes) / var_group.var_H.value)
-    mean += sigmoid(var_group.weight_param.value.T.dot(self.features)[0,0]) \
-        / var_group.var_param.value
-    mean *= self.cond_var 
+    if self.var_dot is None:
+      self.var_dot = sigmoid(var_group.weight_param.value.T \
+          .dot(self.features)[0,0]) / var_group.var_param.value
+    mean = (mean + self.var_dot) * self.cond_var 
     return mean, self.cond_var
 
 

@@ -1,3 +1,13 @@
+""" Test of EM
+    ----------
+
+    Test updates and convergence of EM process. 
+
+    Usage:
+    $ python -m cap.test_em
+"""
+
+
 import unittest
 from numpy import array, identity, absolute
 from numpy.linalg import det
@@ -5,7 +15,19 @@ from math import log
 
 from cap import models, const, em, aux
 
+
 def likelihood(groups, votes):
+  """ Gets the log-likelihood of the current set of variables and parameters.
+
+      Observation: Auxiliary function for testing.
+
+      Args:
+        groups: dictionary of Group objects indexed by names.
+        votes: dictionary of votes of training set.
+
+      Returns:
+        A flot with the log-likelihood value.
+  """
   likelihood = 0
   var_H = groups.itervalues().next().var_H.value
   for vote in votes:

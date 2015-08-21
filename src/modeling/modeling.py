@@ -19,7 +19,7 @@ from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 _NUM_THREADS = 4 
 _SAMPLE = True 
-_SAMPLE_RATIO = 0.001
+_SAMPLE_RATIO = 0.01
 _TRAIN_FILE = '/var/tmp/luciana/train%f.csv' % _SAMPLE_RATIO
 _TEST_FILE = '/var/tmp/luciana/test%f.csv' % _SAMPLE_RATIO
 
