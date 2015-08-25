@@ -82,6 +82,17 @@ class MF_Model(object):
               _BETA * self.U[u,i])
           self.R[r,i] += _ALPHA * (2 * error * der_sig * self.U[u,i] - \
               _BETA * self.R[r,i])
+      e = 0
+      for vote in votes:
+        u = self.user_map[vote['voter']]
+        r = self.review_map[vote['review']]
+        dot = self.U[u,:].dot(self.R[r,:].T)
+        e += vote['vote'] / 5.0 - sigmoid(dot)
+        for k in xrange(K):
+          e += _BETA * (self.U[u,k] ** 2 + self.R[r,k] ** 2)
+      if e < 1e-6:
+        print "Break"
+        break
   
   def predict(self, votes):
     """ Predicts a set of vote examples using previous fitted model.

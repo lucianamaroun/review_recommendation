@@ -78,16 +78,12 @@ class TF_Model(object):
         Returns:
           A float, the dot value.
     """    
-    temp = tensordot(self.S, p, axes=(2, 0))
-    temp = tensordot(temp, a, axes=(1, 0))
-    temp = tensordot(temp, v, axes=(0, 0))
-    return float(temp) 
-   # dot = 0.0
-   # for x in xrange(K):
-   #   for y in xrange(K):
-   #     for z in xrange(K):
-   #       dot += self.S[x,y,z] * self.V[v,x] * self.A[a,y] * self.P[p,z]
-   # return dot
+    dot = 0.0
+    for x in xrange(K):
+      for y in xrange(K):
+        for z in xrange(K):
+          dot += self.S[x,y,z] * self.V[v,x] * self.A[a,y] * self.P[p,z]
+    return dot
   
   def tensor_dot_der_v(self, a, p):
     """ Computes the derivative of the tensor dot relative to 'v' variable.
@@ -99,14 +95,11 @@ class TF_Model(object):
         Return:
           A k-array with the derivative at each dimension of 'v'.
     """
-    temp = tensordot(s, p, axes=(2, 0))
-    temp = tensordot(temp, a, axes=(1, 0))
-    return temp
-   # dot = 0.0
-   # for y in xrange(K):
-   #   for z in xrange(K):
-   #     dot += self.S[i,y,z] * self.A[a,y] * self.P[p,z]
-   # return dot
+    dot = 0.0
+    for y in xrange(K):
+      for z in xrange(K):
+        dot += self.S[:,y,z] * self.A[a,y] * self.P[p,z]
+    return dot
   
   def tensor_dot_der_a(self, v, p):
     """ Computes the derivative of the tensor dot relative to 'a' variable.
@@ -118,33 +111,27 @@ class TF_Model(object):
         Return:
           A k-array with the derivative at each dimension of 'a'.
     """
-    temp = tensordot(s, p, axes=(2, 0))
-    temp = tensordot(temp, v, axes=(0, 0))
-    return temp
-   # dot = 0.0
-   # for x in xrange(K):
-   #   for z in xrange(K):
-   #     dot += self.S[x,i,z] * self.V[v,x] * self.P[p,z]
-   # return dot
+    dot = 0.0
+    for x in xrange(K):
+      for z in xrange(K):
+        dot += self.S[x,:,z] * self.V[v,x] * self.P[p,z]
+    return dot
   
   def tensor_dot_der_p(self, v, a):
     """ Computes the derivative of the tensor dot relative to 'p' variable.
 
         Args:
-          v: voter vector ***************** update comments 
+          v: index of vector in V matrix.
           a: index of vector in A matrix.
     
         Return:
           A k-array with the derivative at each dimension of 'p'.
     """
-    temp = tensordot(s, a, axes=(1, 0))
-    temp = tensordot(temp, v, axes=(0, 0))
-    return temp
-   # dot = 0
-   # for x in xrange(K):
-   #   for y in xrange(K):
-   #     dot += self.S[x,y,i] * self.V[v,x] * self.A[a,y]
-   # return dot
+    dot = 0
+    for x in xrange(K):
+      for y in xrange(K):
+        dot += self.S[x,y,:] * self.V[v,x] * self.A[a,y]
+    return dot
 
   def tensor_dot_der_s(self, v, a, p):
     """ Computes the derivative of the tensor dot relative to 's', the central
@@ -158,8 +145,8 @@ class TF_Model(object):
         Return:
           A (k, k, k) tensor with the derivative at each cell of 's'.
     """
-    temp = tensordot(v, a, 0)
-    temp = tensordot(temp, p, 0)
+    temp = tensordot(self.V[v,:], self.A[a,:], 0)
+    temp = tensordot(temp, self.P[p,:], 0)
     return temp
  
   def fit(self, votes, reviews):
@@ -183,13 +170,21 @@ class TF_Model(object):
         self.V[v,:] += _ALPHA * (2 * error * der_sig * \
             self.tensor_dot_der_v(a, p) - _BETA * self.V[v,:])                                          
         self.A[a,:] += _ALPHA * (2 * error * der_sig * \
-            self.tensor_dot_der_a(v, p) \
-            - _BETA * self.A[a,:])
+            self.tensor_dot_der_a(v, p) - _BETA * self.A[a,:])
         self.P[p,:] += _ALPHA * (2 * error * der_sig * \
             self.tensor_dot_der_p(v, a) - _BETA * self.P[p,:])                                          
         self.S += _ALPHA * (2 * error * der_sig * \
-            tensor_dot_der_s(self.V[v,:], self.A[a,:], self.P[p,:]) - \
-            _BETA * self.S) 
+            self.tensor_dot_der_s(v, a, p) - _BETA * self.S) 
+      e = 0
+      for vote in votes:
+        v = self.voter_map[vote['voter']]
+        a = self.author_map[vote['reviewer']]
+        p = self.product_map[reviews[vote['review']]['product']]
+        dot = self.tensor_dot(v, a, p)
+        e += float(vote['vote']) / 5.0 - sigmoid(dot) # normalized in (0,1)
+      if e < 1e-6:
+        print "Break"
+        break
 
   def predict(self, votes, reviews):
     """ Predicts a set of vote examples using previous fitted model.
