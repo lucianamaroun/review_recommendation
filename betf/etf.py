@@ -3,7 +3,8 @@
 
     Implementation of Tensor Factorization for prediction of helpfulness votes.
     Voter, author and product are the dimensions considered in the model and
-    modeled as latent vectors.
+    modeled as latent vectors. Interaction between author and product explain
+    observed rating as well.
 
     Usage:
     $ python -m betf.etf
@@ -23,7 +24,8 @@ K = 2
 _ITER = 1000    # number of iterations of stochastic gradient descent
 _ALPHA = 0.01   # learning rate
 _BETA = 0.01    # regularization factor
-SAMPLE = 0.001
+_SAMPLE = 0.001
+_TOL = 1e-6 
 
 
 class ETF_Model(object):
@@ -161,7 +163,9 @@ class ETF_Model(object):
           None. Instance fields are updated.
     """
     self._initialize_matrices(votes, reviews)
-    for _ in xrange(_ITER):
+    previous = float('inf')
+    for it in xrange(_ITER):
+      _ALPHA = 1.0 / sqrt(it+1)
       for vote in votes:
         v = self.voter_map[vote['voter']]
         a = self.author_map[vote['reviewer']]
@@ -187,21 +191,30 @@ class ETF_Model(object):
             _BETA * self.A[a,:])
         self.P[p,:] += _ALPHA * (2 * error * der_sig * self.A[a,:] - \
             _BETA * self.P[p,:])                                          
-      e = 0
+      value = 0.0
       for vote in votes:
         v = self.voter_map[vote['voter']]
         a = self.author_map[vote['reviewer']]
         p = self.product_map[reviews[vote['review']]['product']]
         dot = self.tensor_dot(v, a, p)
-        e += float(vote['vote']) / 5.0 - sigmoid(dot) # normalized in (0,1)
+        value += (float(vote['vote']) / 5.0 - sigmoid(dot)) ** 2 # normalized in (0,1)
+        for i in xrange(K):
+          value += _BETA * (self.V[v,i] ** 2 + self.A[a,i] ** 2 + \
+              self.P[p,i] ** 2)
+          for j in xrange(K):
+            for k in xrange(K):
+              value += _BETA * (self.S[i,j,k] ** 2)
       for review in reviews.itervalues():
         a = self.author_map[review['user']]
         p = self.product_map[review['product']]
         dot = self.A[a,:].dot(self.P[p,:])
-        e += float(review['rating']) / 5.0 - sigmoid(dot) # normalized in (0,1)
-      if e < 1e-6:
-        print "Break"
+        value += (float(review['rating']) / 5.0 - sigmoid(dot)) ** 2 # normalized in (0,1)
+        for k in xrange(K):
+          value += _BETA * (self.V[v,k] ** 2 + self.P[p,k] ** 2)
+      if abs(previous - value) < _TOL:
+        print 'Break'
         break
+      previous = value
 
   def predict(self, votes, reviews):
     """ Predicts a set of vote examples using previous fitted model.
@@ -215,44 +228,49 @@ class ETF_Model(object):
     """
     pred = []
     for vote in votes:
-      v = self.voter_map[vote['voter']] if vote['voter'] in self.voter_map else -1
-      a = self.author_map[vote['reviewer']] if vote['reviewer'] in self.author_map else -1
-      p = self.product_map[reviews[vote['review']]['product']] if reviews[vote['review']]['product'] in self.product_map else -1
+      v = self.voter_map[vote['voter']] if vote['voter'] in self.voter_map \
+          else -1
+      a = self.author_map[vote['reviewer']] if vote['reviewer'] in \
+          self.author_map else -1
+      p = self.product_map[reviews[vote['review']]['product']] if \
+          reviews[vote['review']]['product'] in self.product_map else -1
       if v != -1 and a != -1 and p != -1:
-        pred.append(self.tensor_dot(v, a, p))
+        pred.append(sigmoid(self.tensor_dot(v, a, p)))
       else:
         pred.append(nan)
     return pred
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   import pickle
   print 'Reading pickles'
  # reviews, _, _, train, test = model()
- # pickle.dump(reviews, open('pkl/betf_reviews%f.pkl' % SAMPLE, 'w'))
- # pickle.dump(train, open('pkl/betf_train%f.pkl' % SAMPLE, 'w'))
- # pickle.dump(test, open('pkl/betf_test%f.pkl' % SAMPLE, 'w'))
-  reviews = pickle.load(open('pkl/betf_reviews%f.pkl' % SAMPLE, 'r'))
-  train = pickle.load(open('pkl/betf_train%f.pkl' % SAMPLE, 'r'))
-  test = pickle.load(open('pkl/betf_test%f.pkl' % SAMPLE, 'r'))
+ # pickle.dump(reviews, open('pkl/betf_reviews%f.pkl' % _SAMPLE, 'w'))
+ # pickle.dump(train, open('pkl/betf_train%f.pkl' % _SAMPLE, 'w'))
+ # pickle.dump(test, open('pkl/betf_test%f.pkl' % _SAMPLE, 'w'))
+  reviews = pickle.load(open('pkl/betf_reviews%f.pkl' % _SAMPLE, 'r'))
+  train = pickle.load(open('pkl/betf_train%f.pkl' % _SAMPLE, 'r'))
+  test = pickle.load(open('pkl/betf_test%f.pkl' % _SAMPLE, 'r'))
   overall_avg = float(sum([float(v['vote']) / 5.0 for v in train])) \
       / len(train)
+  train_reviews_ids = set([vote['review'] for vote in train])
+  train_reviews = {r_id:reviews[r_id] for r_id in train_reviews_ids}
   
   print 'Fitting Model'
   model = ETF_Model()
-  model.fit(train, reviews)
+  model.fit(train, train_reviews)
 
   print 'Calculate Predictions'
   pred = model.predict(train, reviews)
    
-  print "TRAINING ERROR"
+  print 'TRAINING ERROR'
   sse = sum([(overall_avg if isnan(pred[i]) else 
       pred[i] - train[i]['vote'] / 5.0) ** 2 for i in xrange(len(train))])
   rmse = sqrt(sse/len(train))
   print 'RMSE: %s' % rmse
   
   pred = model.predict(test, reviews) 
-  print "TESTING ERROR"
+  print 'TESTING ERROR'
   sse = sum([(overall_avg if isnan(pred[i]) else 
       pred[i] - test[i]['vote'] / 5.0) ** 2 for i in xrange(len(test))])
   rmse = sqrt(sse/len(test))

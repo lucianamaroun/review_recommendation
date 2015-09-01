@@ -75,5 +75,5 @@ class SimpleTestCase(unittest.TestCase):
       self.assertAlmostEqual(vote['vote'], U[u,:].dot(R[r,:].T), 1)
   
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   unittest.main()

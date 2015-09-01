@@ -20,10 +20,11 @@ from src.modeling.modeling import _SAMPLE_RATIO
 
 
 K = 2
-
 _ITER = 1000    # number of iterations of stochastic gradient descent
-_ALPHA = 0.01   # learning rate
-_BETA = 0.01    # regularization factor
+_ALPHA = 1      # learning rate (MOGHADDAM, with update)
+_BETA = 0.1     # regularization factor (MOGHADDAM)
+_SAMPLE = 0.001
+_TOL = 1e-6
 
 
 class MF_Model(object):
@@ -70,7 +71,9 @@ class MF_Model(object):
           None. Instance fields are updated.
     """
     self._initialize_matrices(votes)
-    for _ in xrange(_ITER):
+    previous = float('inf')
+    for it in xrange(_ITER):
+      _ALPHA = 1.0 / sqrt(it+1)
       for vote in votes:
         u = self.user_map[vote['voter']]
         r = self.review_map[vote['review']]
@@ -82,17 +85,18 @@ class MF_Model(object):
               _BETA * self.U[u,i])
           self.R[r,i] += _ALPHA * (2 * error * der_sig * self.U[u,i] - \
               _BETA * self.R[r,i])
-      e = 0
+      value = 0.0
       for vote in votes:
         u = self.user_map[vote['voter']]
         r = self.review_map[vote['review']]
         dot = self.U[u,:].dot(self.R[r,:].T)
-        e += vote['vote'] / 5.0 - sigmoid(dot)
+        value += (vote['vote'] / 5.0 - sigmoid(dot)) ** 2
         for k in xrange(K):
-          e += _BETA * (self.U[u,k] ** 2 + self.R[r,k] ** 2)
-      if e < 1e-6:
-        print "Break"
+          value += _BETA * (self.U[u,k] ** 2 + self.R[r,k] ** 2)
+      if abs(previous - value) < _TOL:
+        print 'Break'
         break
+      previous = value
   
   def predict(self, votes):
     """ Predicts a set of vote examples using previous fitted model.
@@ -109,20 +113,20 @@ class MF_Model(object):
       u = self.user_map[vote['voter']] if vote['voter'] in self.user_map else -1
       r = self.review_map[vote['review']] if vote['review'] in self.review_map else -1
       if u != -1 and r != -1:
-        pred.append(self.U[u,:].dot(self.R[r,:].T))
+        pred.append(sigmoid(self.U[u,:].dot(self.R[r,:].T)))
       else:
         pred.append(nan)
     return pred
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   import pickle
   print 'Reading pickles'
  # _, _, _, train, test = model()
- # pickle.dump(train, open('pkl/cap_train%f.pkl' % _SAMPLE_RATIO, 'w'))
- # pickle.dump(test, open('pkl/cap_test%f.pkl' % _SAMPLE_RATIO, 'w'))
-  train = pickle.load(open('pkl/cap_train%f.pkl' % _SAMPLE_RATIO, 'r'))
-  test = pickle.load(open('pkl/cap_test%f.pkl' % _SAMPLE_RATIO, 'r'))
+ # pickle.dump(train, open('pkl/cap_train%f.pkl' % _SAMPLE, 'w'))
+ # pickle.dump(test, open('pkl/cap_test%f.pkl' % _SAMPLE, 'w'))
+  train = pickle.load(open('pkl/cap_train%f.pkl' % _SAMPLE, 'r'))
+  test = pickle.load(open('pkl/cap_test%f.pkl' % _SAMPLE, 'r'))
   overall_avg = float(sum([float(v['vote']) / 5.0 for v in train])) \
       / len(train)
   
@@ -133,14 +137,14 @@ if __name__ == "__main__":
   print 'Calculate Predictions'
   pred = model.predict(train)
    
-  print "TRAINING ERROR"
+  print 'TRAINING ERROR'
   sse = sum([(overall_avg if isnan(pred[i]) else 
       pred[i] - train[i]['vote'] / 5.0) ** 2 for i in xrange(len(train))])
   rmse = sqrt(sse/len(train))
   print 'RMSE: %s' % rmse
   
   pred = model.predict(test) 
-  print "TESTING ERROR"
+  print 'TESTING ERROR'
   sse = sum([(overall_avg if isnan(pred[i]) else 
       pred[i] - test[i]['vote'] / 5.0) ** 2 for i in xrange(len(test))])
   rmse = sqrt(sse/len(test))
