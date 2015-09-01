@@ -9,7 +9,7 @@
 """
 
 import math
-from numpy import std, mean
+from numpy import std, mean, nan
 from networkx import pagerank
 
 from src.modeling.author_voter_modeling import obtain_vectors # put in a specialized module
@@ -145,31 +145,31 @@ def finalize_user_features(users, trusts):
   prank = pagerank(trusts)
   for user in users:
     if users[user]['num_reviews'] == 0:
-      users[user]['avg_rating'] = -1 
-      users[user]['avg_rel_rating'] = -1 
-      users[user]['sd_rating'] = -1 
+      users[user]['avg_rating'] = nan 
+      users[user]['avg_rel_rating'] = nan 
+      users[user]['sd_rating'] = nan
     else:
       users[user]['avg_rating'] /= float(users[user]['num_reviews'])
       users[user]['avg_rel_rating'] /= float(users[user]['num_reviews'])
-      users[user]['sd_rating'] = std(users[user]['ratings'].values(), ddof=1)
-          if user[user]['num_reviews'] > 1 else 0.0
+      users[user]['sd_rating'] = std(users[user]['ratings'].values(), ddof=1) \
+          if users[user]['num_reviews'] > 1 else 0.0
     if users[user]['num_votes_rec'] == 0:
-      users[user]['avg_help_rec'] = -1 
-      users[user]['sd_help_rec'] = -1 
+      users[user]['avg_help_rec'] = nan 
+      users[user]['sd_help_rec'] = nan
     else:
       users[user]['avg_help_rec'] /= float(users[user]['num_votes_rec'])
-      users[user]['sd_help_rec'] = std(users[user]['sd_help_rec'], ddof=1)
-          if user[user]['num_votes_rec'] > 1 else 0.0
+      users[user]['sd_help_rec'] = std(users[user]['sd_help_rec'], ddof=1) \
+          if users[user]['num_votes_rec'] > 1 else 0.0
     if users[user]['num_votes_giv'] == 0:
-      users[user]['avg_help_giv'] = -1 
-      users[user]['avg_rel_help_giv'] = -1 
-      users[user]['sd_help_giv'] = -1 
+      users[user]['avg_help_giv'] = nan 
+      users[user]['avg_rel_help_giv'] = nan 
+      users[user]['sd_help_giv'] = nan
     else:
       users[user]['avg_help_giv'] /= float(users[user]['num_votes_giv'])
       users[user]['avg_rel_help_giv'] /= float(users[user]['num_votes_giv'])
-      users[user]['sd_help_giv'] = std(users[user]['sd_help_giv'], ddof=1)
-          if user[user]['num_votes_giv'] > 1 else 0.0
-    users[user]['pagerank'] = prank[user] if user in prank else -1.0
+      users[user]['sd_help_giv'] = std(users[user]['sd_help_giv'], ddof=1) \
+          if users[user]['num_votes_giv'] > 1 else 0.0
+    users[user]['pagerank'] = prank[user] if user in prank else nan
 
 """ Calculates aggregated features from immediate social network of user.
 

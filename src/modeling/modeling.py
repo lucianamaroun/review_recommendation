@@ -17,9 +17,9 @@ from src.modeling.data_division import split_votes
 from src.lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 
-_NUM_THREADS = 4 
+_NUM_THREADS = 6 
 _SAMPLE = True 
-_SAMPLE_RATIO = 0.01
+_SAMPLE_RATIO = 0.001
 _TRAIN_FILE = '/var/tmp/luciana/train%f.csv' % _SAMPLE_RATIO
 _TEST_FILE = '/var/tmp/luciana/test%f.csv' % _SAMPLE_RATIO
 
@@ -34,7 +34,7 @@ _TEST_FILE = '/var/tmp/luciana/test%f.csv' % _SAMPLE_RATIO
     Returns:
       Reviews, users, trusts dictionaries and train and test. 
 """
-def model():
+def model(ratio=_SAMPLE_RATIO):
   import pickle
   print 'Getting trust'
   trusts = parser.parse_trusts()

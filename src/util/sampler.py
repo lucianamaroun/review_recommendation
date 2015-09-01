@@ -29,5 +29,5 @@ def sample_reviews(sample_ratio):
   rev_iter = parser.parse_reviews()
   for _ in xrange(int(ceil(sample_ratio * 330000))):
     sel_reviews.append(rev_iter.next())
-
+  
   return sel_reviews

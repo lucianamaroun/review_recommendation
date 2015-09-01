@@ -95,29 +95,19 @@ def adamic_adar_trustees(trusts, user_a, user_b):
       A matrix indexed by node ids with katz index of each pair. 
 """      
 def get_katz_matrix(trusts):
- # adj = csc_matrix(nx.adjacency_matrix(trusts, sorted(trusts.nodes())))
- # n = trusts.number_of_nodes()
- # A = identity(n) - _BETA * adj
- # L, U = lu(A, permute_l=True)
- # L_inv = pinv(L)
- # U_inv = pinv(U)
- # A_inv = U_inv.dot(L_inv) 
- # katz = A_inv - identity(n)
+ # n = len(trusts.nodes())
+ # A = adjacency_matrix(trusts, sorted(trusts.nodes()))
+ # katz = pinv(identity(n) - _BETA * A) - identity(n)
  # print "Ended Katz"
- # nodes_index = {}
- # for i, node in enumerate(sorted(trusts.nodes())):
- #   nodes_index[node] = i
-  katz = {}
+ # import pickle
+ # pickle.dump(katz, open("pkl/katz.pkl", "w"))
+ # print "Ended Dump"
+ # import sys
+ # sys.exit()
+  katz = pickle.load(open("pkl/katz.pkl", "r"))
   nodes_index = {}
-  comps = weakly_connected_component_subgraphs(trusts)
-  for i, comp in enumerate(comps):
-    n = comp.number_of_nodes()
-    if n > 1:
-      print "%d - Computing Katz %dx%d" % (i, n, n)
-      A = adjacency_matrix(comp, sorted(comp.nodes()))
-      for j, node in enumerate(sorted(comp.nodes())):
-        nodes_index[node] = (i, j) # first component, then index inside
-      katz[i] = pinv(identity(n) - _BETA * A) - identity(n)
+  for i, node in enumerate(sorted(trusts.nodes())):
+    nodes_index[node] = i
   return katz, nodes_index
 
 
@@ -198,11 +188,10 @@ def calculate_connection_strength(author, voter, trusts, katz, nodes_index):
   features['adamic_adar_trustees'] = adamic_adar_trustees(trusts, a_id, v_id)
   features['adamic_adar_trustors'] = adamic_adar_trustors(trusts, a_id, v_id)
   features['katz'] = 0
- # if a_id in nodes_index and v_id in nodes_index:
- #   a_comp, a_index = nodes_index[a_id]
- #   v_comp, v_index = nodes_indes[v_id]
- #   if a_comp == v_comp:
- #     features['katz'] = katz[a_comp][v_index,a_index]
+  if a_id in nodes_index and v_id in nodes_index:
+    a_index = nodes_index[a_id]
+    v_index = nodes_indes[v_id]
+    features['katz'] = katz[v_index,a_index]
   return features
 
 

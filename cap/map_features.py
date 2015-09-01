@@ -6,7 +6,7 @@
     Usage: this method is not directly callable.
 """
 
-from numpy import reshape, array
+from numpy import reshape, array, isnan
 
 
 def map_review_features(review):
@@ -18,46 +18,57 @@ def map_review_features(review):
       Returns:
         A column array with features.
   """
-  new_review = array([review['num_tokens'], review['num_sents'], 
-      review['uni_ratio'], review['avg_sent'], review['cap_sent'],
-      review['noun_ratio'], review['adj_ratio'], review['comp_ratio'],
-      review['verb_ratio'], review['adv_ratio'], review['fw_ratio'],
-      review['sym_ratio'], review['noun_ratio'], review['punct_ratio'],
-      review['kl'], review['pos_ratio'], review['neg_ratio']])
-  new_review = reshape(new_review, (17, 1))
-  return new_review
+  features = ['num_tokens', 'num_sents', 'uni_ratio', 'avg_sent', 'cap_sent',
+      'noun_ratio', 'adj_ratio', 'comp_ratio', 'verb_ratio', 'adv_ratio',
+      'fw_ratio', 'sym_ratio', 'noun_ratio', 'punct_ratio', 'kl', 'pos_ratio',
+      'neg_ratio']
+  model = []
+  for feature in features:
+    model.append(review[feature])
+  model = array(model).reshape(17, 1)
+  return model 
 
 
-def map_author_features(author):
+def map_author_features(author, avg_user):
   """ Maps a user to an array of author features.
 
       Args:
         author: a user dictionary of an author.
+        avg_user: a dictionary of an average user for mean imputation of
+          undefined features.
 
       Returns:
         A column array with features.
   """
-  new_author = array([author['num_reviews'], author['avg_rating'],
-      author['num_trustors'], author['num_trustees'], author['pagerank']])
-  new_author = reshape(new_author, (5, 1))
-  return new_author
+  features = ['num_reviews', 'avg_rating', 'num_trustors', 'num_trustees',
+      'pagerank']
+  model = []
+  for feature in features:
+    model.append(avg_user[feature] if isnan(author[feature]) else 
+        author[feature])
+  model = array(model).reshape(5, 1)
+  return model 
 
 
-def map_voter_features(voter):
+def map_voter_features(voter, avg_user):
   """ Maps a user to an array of voter features.
 
       Args:
         voter: a user dictionary of a voter.
+        avg_user: a dictionary of an average user for mean imputation of
+          undefined features.
 
       Returns:
         A column array with features.
   """
-  new_voter = array([voter['num_trustors'], voter['num_trustees'],
-      voter['pagerank'], voter['avg_rating'], voter['avg_rating_dir_net'],
-      voter['avg_rating_sim'], voter['avg_help_giv'],
-      voter['avg_help_giv_tru_net'], voter['avg_help_giv_sim']])
-  new_voter = reshape(new_voter, (9, 1))
-  return new_voter
+  features = ['num_trustors', 'num_trustees', 'pagerank', 'avg_rating', 
+      'avg_rating_dir_net', 'avg_rating_sim', 'avg_help_giv', 
+      'avg_help_giv_tru_net', 'avg_help_giv_sim'] 
+  model = []
+  for feature in features:
+    model.append(avg_user[feature] if isnan(voter[feature]) else voter[feature])
+  model = array(model).reshape(9, 1)
+  return model 
 
 
 def map_users_sim_features(users_sim):
@@ -69,12 +80,13 @@ def map_users_sim_features(users_sim):
       Returns:
         A column array with features.
   """
-  new_users_sim = array([users_sim['common_rated'], users_sim['jacc_rated'],
-      users_sim['cos_ratings'], users_sim['pear_ratings'],
-      users_sim['diff_avg_ratings'], users_sim['diff_max_ratings'],
-      users_sim['diff_min_ratings']])
-  new_users_sim = reshape(new_users_sim, (7, 1))
-  return new_users_sim
+  features = ['common_rated', 'jacc_rated', 'cos_ratings', 'pear_ratings',
+      'diff_avg_ratings', 'diff_max_ratings', 'diff_min_ratings']
+  model = []
+  for feature in features:
+    model.append(users_sim[feature])
+  model = array(model).reshape(7, 1)
+  return model 
 
 
 def map_users_conn_features(users_conn):
@@ -86,8 +98,36 @@ def map_users_conn_features(users_conn):
       Returns:
         A column array with features.
   """
-  new_users_conn = array([users_conn['jacc_trustees'],
-      users_conn['jacc_trustors'], users_conn['adamic_adar_trustees'],
-      users_conn['adamic_adar_trustors'], users_conn['katz']]) 
-  new_users_conn = reshape(new_users_conn, (5, 1))
-  return new_users_conn
+  features = ['jacc_trustees', 'jacc_trustors', 'adamic_adar_trustees',
+      'adamic_adar_trustors', 'katz'] 
+  model = []
+  for feature in features:
+    model.append(users_conn[feature])
+  model = array(model).reshape(5, 1)
+  return model 
+
+
+def compute_avg_user(users):
+  """ Computes an average user from the set of users by averaging each features
+      from users who have it defined.
+
+      Args:
+        users: dictionary of users dictionaries.
+
+      Returns:
+        A user dictionary containing averaged features, except identifiers and
+      lists.
+  """
+  avg_user = users.itervalues().next().copy()
+  for feature in avg_user:
+    if feature in ['id', 'ratings', '_id']:
+      continue
+    avg_user[feature] = 0.0
+    count = 0
+    for user in users.itervalues():
+      if not isnan(user[feature]):
+        avg_user[feature] += user[feature]
+        count += 1
+    avg_user[feature] /= float(count)
+  return avg_user
+
