@@ -10,9 +10,14 @@ import numpy as np
 from numpy import array, reshape, mean, std, identity, zeros, diagonal
 from numpy.linalg import pinv
 from numpy.random import normal, multivariate_normal, uniform
+from pymongo import MongoClient
 
 from cap import const
 from cap.aux import sigmoid, sigmoid_der1, sigmoid_der2, newton_raphson
+
+
+client = MongoClient()
+db = client.sample
 
 
 class Value(object):
@@ -513,7 +518,7 @@ class Variable(Value):
     return self.samples[-1]
 
 
-  def get_rest_value(self, groups, vote):
+  def get_rest_value(self, vote):
     """ Gets the value of the variable as the truth minus all the other terms
         except the one involving this variable, for a given vote.
 
@@ -526,22 +531,29 @@ class Variable(Value):
         terms.
     """    
     rest = vote['vote']
-    names = groups.keys()[:]
-    self_group = groups[self.name]
-    for name in names:
-      if name == self.name or name == self_group.pair_name:
+    self_group = db.groups.find_one({'_id': self.name})
+    for group in db.groups.find():
+      if group['_id'] == self.name or group['_id'] == self_group['pair_name']:
         continue
-      group = groups[name]
-      var = group.get_instance(vote)
+      if 'entity_type_1' in group:
+        var = db.variables.find_one({'group': group['_id'], 'entity_id_1':
+            vote[group['entity_type_1']], 'entity_id_2': 
+            vote[group['entity_type_2']]})
+      else: 
+        var = db.variables.find_one({'group': group['_id'], 'entity_id':
+            vote[group['entity_type']]})
       if not var:
         continue
-      var_value = var.get_last_sample()
-      if group.pair_name:
-        if name > group.pair_name:
+      var_value = var['last_sample']
+      pair_name = group['pair_name']
+      if pair_name:
+        if group['_id'] > pair_name:
           continue
-        pair_name = group.pair_name
-        pair_value = groups[pair_name].get_instance(vote).get_last_sample()
-        rest = rest - var_value.T.dot(pair_value)[0,0]
+        pair_group = db.groups.find_one({'_id': pair_name})
+        pair_value = db.variables.find_one({'group': pair_name, 'entity_id': 
+            vote[pair_group['entity_type']]})['last_sample']
+        rest = rest - array(var_value).reshape(group['shape']).T \
+            .dot(array(pair_value).reshape(pair_group['shape']))[0,0]
       else:
         rest = rest - var_value
     return rest
@@ -666,6 +678,7 @@ class ArrayVariable(Variable):
         Returns:
           None.
     """
+    value = array(value).reshape(self.shape)
     super(ArrayVariable, self).add_sample(value)
     self.value_matrix = value.dot(value.T)
 
@@ -690,7 +703,7 @@ class EntityScalarVariable(ScalarVariable):
     super(EntityScalarVariable, self).__init__(name, entity_id, e_type,
         features)
 
-  def get_cond_mean_and_var(self, groups, votes):
+  def get_cond_mean_and_var(self):
     """ Gets the conditional mean and variance of this variable.
     
         Observations:
@@ -705,23 +718,23 @@ class EntityScalarVariable(ScalarVariable):
           A 2-tuple with the mean and variance, both floats.
     """
     if self.related_votes is None:
-      self.related_votes = [i for i in votes if votes[i][self.e_type] == 
-          self.entity_id]
+      self.related_votes = [vote['_id'] for vote in db.votes.find() if 
+          vote[self.e_type] == self.entity_id]
       self.num_votes = len(self.related_votes)
     variance = 0.0
     mean = 0.0
-    var_group = groups[self.name]
+    param = db.params.find_one({'_id': self.name})
     for i in self.related_votes:
-      vote = votes[i]
-      rest = self.get_rest_value(groups, vote)
+      vote = db.votes.find_one({'_id': i})
+      rest = self.get_rest_value(vote)
       mean += rest
-    mean /= var_group.var_H.value
+    mean /= param['var_H']
     if self.cond_var is None:
-      self.cond_var = 1.0 / (1.0 / var_group.var_param.value + \
-          float(self.num_votes) / var_group.var_H.value)
+      self.cond_var = 1.0 / (1.0 / param['var'] + float(self.num_votes) / \
+          param['var_H'])
     if self.var_dot is None:
-      self.var_dot = var_group.weight_param.value.T.dot(self.features)[0,0] \
-        / var_group.var_param.value
+      self.var_dot = array(param['weight']).reshape(self.features.shape).T \
+          .dot(self.features)[0,0] / param['var']
     mean = self.cond_var * (mean + self.var_dot)
     return mean, self.cond_var
 
@@ -746,7 +759,7 @@ class EntityArrayVariable(ArrayVariable):
         features)
     self.inv_var = None
 
-  def get_cond_mean_and_var(self, groups, votes):
+  def get_cond_mean_and_var(self):
     """ Gets the conditional mean and variance of this variable.
     
         Observations:
@@ -762,27 +775,29 @@ class EntityArrayVariable(ArrayVariable):
         matrix of size (K, K).
     """
     if self.related_votes is None:
-      self.related_votes = [i for i in votes if votes[i][self.e_type] == 
-          self.entity_id]
+      self.related_votes = [vote['_id'] for vote in db.votes.find() if \
+          vote[self.e_type] == self.entity_id]
       self.num_votes = len(self.related_votes)
     variance = zeros((const.K, const.K))
     mean = zeros((const.K, 1))
-    var_group = groups[self.name]
-    pair_group = groups[var_group.pair_name]
+    param = db.params.find_one({'_id': self.name})
+    group = db.groups.find_one({'_id': self.name})
+    pair_group = db.groups.find_one({'_id': group['pair_name']})
     if self.inv_var is None:
-      var_matrix = var_group.var_param.value * identity(const.K)
+      var_matrix = param['var'] * identity(const.K)
       self.inv_var = pinv(var_matrix)
     for i in self.related_votes:
-      vote = votes[i]
-      rest = self.get_rest_value(groups, vote)
-      pair_var = pair_group.get_instance(vote)
-      variance += pair_var.value_matrix # pair_value.dot(pair_value.T)
-      mean += rest * pair_var.get_last_sample()
-    variance = pinv(variance / var_group.var_H.value + self.inv_var)
+      vote = db.votes.find_one({'_id': i})
+      rest = self.get_rest_value()
+      pair_var = db.variables.find_one({'group': group['pair_name'], 
+          'entity_id': vote[pair_group.entity_type]})
+      pair_value = array(pair_var['last_sample']).reshape(pair_group['shape'])
+      variance += pair_value.dot(pair_value.T)
+      mean += rest * pair_value
+    variance = pinv(variance / param['var_H'] + self.inv_var)
     if self.var_dot is None:
-      self.var_dot = self.inv_var.dot(var_group.weight_param.value) \
-          .dot(self.features)
-    mean = variance.dot(self.var_dot + mean / var_group.var_H.value)
+      self.var_dot = self.inv_var.dot(param['weight']).dot(self.features)
+    mean = variance.dot(self.var_dot + mean / param['var_H'])
     return mean, variance
 
   def reset_samples(self):
@@ -817,7 +832,7 @@ class InteractionScalarVariable(ScalarVariable):
     super(InteractionScalarVariable, self).__init__(name, entity_id,
         e_type, features)
  
-  def get_cond_mean_and_var(self, groups, votes):
+  def get_cond_mean_and_var(self):
     """ Gets the conditional mean and variance of this variable.
     
         Observations:
@@ -833,23 +848,25 @@ class InteractionScalarVariable(ScalarVariable):
     """
     # TODO: use index to find related votes
     if self.related_votes is None:
-      self.related_votes = [i for i in votes if votes[i][self.e_type[0]] == 
-          self.entity_id[0] and votes[i][self.e_type[1]] == self.entity_id[1]]
+      self.related_votes = [vote['_id'] for vote in db.votes.find() if \
+          vote[self.e_type[0]] == self.entity_id[0] and \
+          vote[self.e_type[1]] == self.entity_id[1]]
       self.num_votes = len(self.related_votes)
     variance = 0.0
     mean = 0.0
-    var_group = groups[self.name]
     for i in self.related_votes:
-      vote = votes[i]
-      rest = self.get_rest_value(groups, vote)
+      vote = db.votes.find_one({'_id': i}) 
+      rest = self.get_rest_value()
       mean += rest
-    mean /= var_group.var_H.value
+    param = db.params.find_one({'_id': self.name})
+    mean /= param['var_H']
     if self.cond_var is None: 
-      self.cond_var = 1.0 / (1.0 / var_group.var_param.value + \
-          float(self.num_votes) / var_group.var_H.value)
+      self.cond_var = 1.0 / (1.0 / param['var'] + \
+          float(self.num_votes) / param['var_H'])
     if self.var_dot is None:
-      self.var_dot = sigmoid(var_group.weight_param.value.T \
-          .dot(self.features)[0,0]) / var_group.var_param.value
+      self.var_dot = sigmoid(array(param['weight']) \
+          .reshape(self.features.shape).T \
+          .dot(self.features)[0,0]) / param['var']
     mean = (mean + self.var_dot) * self.cond_var 
     return mean, self.cond_var
 

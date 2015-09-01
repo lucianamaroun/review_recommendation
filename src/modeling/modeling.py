@@ -48,7 +48,7 @@ def model(ratio=_SAMPLE_RATIO):
     reviews = model_reviews_parallel(_NUM_THREADS)
   pickle.dump(reviews, open('pkl/reviews%d.pkl' % (_SAMPLE_RATIO * 100), 'w'))
 
-  print 'Split train and test'
+  print 'Splitting train and test'
   train, test = split_votes(reviews)
   pickle.dump(train, open('pkl/train%d.pkl' % (_SAMPLE_RATIO * 100), 'w'))
   pickle.dump(test, open('pkl/test%d.pkl' % (_SAMPLE_RATIO * 100), 'w'))
