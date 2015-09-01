@@ -279,14 +279,15 @@ def group_reviews_by_product(reviews):
       None. The KL divergence value is create in each review dictionary under
     the key 'kl'.
 """
-def calculate_kl_divergence(reviews):
+def calculate_kl_divergence(train_reviews, reviews):
   grouped_reviews = group_reviews_by_product(reviews)
   for product in grouped_reviews:
     avg_unigram = {}
     avg_text = ""
     for review in grouped_reviews[product]:
       review['unigram'] = get_unigram_model(review['text'])
-      avg_text += " " + review['text']
+      if review['id'] in train_reviews:
+        avg_text += " " + review['text'] # average only relative to train
     avg_unigram = get_unigram_model(avg_text)
     for review in grouped_reviews[product]:
       review['kl'] = 0
@@ -296,7 +297,7 @@ def calculate_kl_divergence(reviews):
       review.pop('unigram', None)
 
 
-def calculate_kl_divergence_mongo():  
+def calculate_kl_divergence_mongo(train_reviews):  
   distinct_products = reviews_db.distinct("product")
   for product in distinct_products:
     avg_unigram = {}
@@ -304,7 +305,8 @@ def calculate_kl_divergence_mongo():
     for review in reviews_db.find({"product": product}):
       review['unigram'] = get_unigram_model(review['text'])
       reviews_db.update({'_id': review["_id"]} , {"$set": review}, upsert=True)
-      avg_text += " " + review['text']
+      if review['id'] in train_reviews:
+        avg_text += " " + review['text'] # average only relative to train
     avg_unigram = get_unigram_model(avg_text)
     for review in reviews_db.find({"product": product}):
       review['kl'] = 0
@@ -352,15 +354,16 @@ def get_unigram_model(text):
       A dictionary of products indexed by product name and containing a
     dictionary with key 'avg_rating' as value.
 """
-def model_products(reviews):
+def model_products(train_reviews, reviews):
   products = {}
   for review in reviews.values():
     product = review['product']
     if product not in products:
       products[product] = {}
       products[product]['sum'] = products[product]['count'] = 0.0
-    products[product]['sum'] += review['rating']
-    products[product]['count'] += 1.0
+    if review in train_reviews: # average regarding only train
+      products[product]['sum'] += review['rating']
+      products[product]['count'] += 1.0
   for product in products:
     products[product]['avg_rating'] = products[product]['sum'] / \
         products[product]['count']
@@ -377,8 +380,8 @@ def model_products(reviews):
       None. Dictionary of reviews is changed in place with an additional key
     'rel_rating' per review .
 """
-def calculate_rel_rating(reviews):
-  products = model_products(reviews)
+def calculate_rel_rating(train_reviews, reviews):
+  products = model_products(train_reviews, reviews)
   for review_id in reviews:
     product = reviews[review_id]['product']
     reviews[review_id]['rel_rating'] = reviews[review_id]['rating'] - \
@@ -394,7 +397,7 @@ def calculate_rel_rating(reviews):
     Returns:
       A dictionary of reviews indexed by reviews' ids.
 """
-def model_reviews_parallel(num_threads, sample_raw_reviews=None):
+def model_reviews_parallel(num_threads, train, sample_raw_reviews=None):
   raw_reviews = sample_raw_reviews if sample_raw_reviews else [r for r in
       parser.parse_reviews()]
 
@@ -406,9 +409,10 @@ def model_reviews_parallel(num_threads, sample_raw_reviews=None):
   result = [review for review in result if review]
   reviews = {review['id']:review for review in result}
 
-  #calculate_kl_divergence_mongo()
-  calculate_kl_divergence(reviews)  
-  calculate_rel_rating(reviews)
+  train_reviews = set([vote['review'] for vote in train])
+  #calculate_kl_divergence_mongo(train_reviews)
+  calculate_kl_divergence(train_reviews, reviews)  
+  calculate_rel_rating(train_reviews, reviews)
 
   return reviews
 
