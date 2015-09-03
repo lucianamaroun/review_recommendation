@@ -3,10 +3,11 @@ plot/*
 pkl/*
 old*
 out*
+svm_rank/*
 \.DS_Store*
 *\.pyc
 *~
 *\.sh
 *\.txt
-*\.txt
+*\.mod
 *\.dat
