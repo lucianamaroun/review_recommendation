@@ -296,6 +296,30 @@ def calculate_kl_divergence(train_reviews, reviews):
             avg_unigram[word])
       review.pop('unigram', None)
 
+def calculate_kl_divergence_mongo():  
+  print("using mongo")
+  avg_unigram = {}
+  total_words = 0
+  distinct_products = reviews_db.distinct("product")
+  for product in distinct_products:
+    for review in reviews_db.find({"product": product}):
+      review['unigram'], num_words = get_unigram_model(review['text'])
+      reviews_db.update({'_id': review["_id"]} , {"$set": review}, upsert=True)
+      for word in review['unigram']:
+        if word not in avg_unigram:
+          avg_unigram[word] = 0
+        avg_unigram[word] += review['unigram'][word]
+      total_words += num_words
+    for word in avg_unigram:
+      avg_unigram[word] = float(avg_unigram[word]) / total_words if total_words else 0
+    for review in reviews_db.find({"product": product}):
+      review['kl'] = 0
+      for word in review['unigram']:
+        if not avg_unigram[word]:
+          continue
+        review['kl'] += review['unigram'][word] * log(review['unigram'][word] /
+            avg_unigram[word])
+      reviews_db.update({'_id': review["_id"]} , {"$set": review}, upsert=True)
 
 def calculate_kl_divergence_mongo(train_reviews):  
   distinct_products = reviews_db.distinct("product")

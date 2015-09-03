@@ -634,7 +634,7 @@ class ArrayVariable(Variable):
     """
     super(ArrayVariable, self).__init__(name, shape, entity_id, e_type,
         features)
-    self.value_matrix = self.value.dot(self.value.T)
+    #self.value_matrix = self.value.dot(self.value.T)
 
   def calculate_empiric_mean(self):
     """ Calculates the empiric mean of this variable using the samples, 
@@ -680,7 +680,7 @@ class ArrayVariable(Variable):
     """
     value = array(value).reshape(self.shape)
     super(ArrayVariable, self).add_sample(value)
-    self.value_matrix = value.dot(value.T)
+    #self.value_matrix = value.dot(value.T)
 
 
 class EntityScalarVariable(ScalarVariable):
