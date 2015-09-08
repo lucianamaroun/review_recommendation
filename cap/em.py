@@ -12,24 +12,20 @@ from math import ceil
 
 from numpy.random import normal, multivariate_normal
 from math import sqrt
-import numpy as np
-from multiprocessing import Pool, Manager
+from numpy import array, identity, zeros
+from numpy.linalg import pinv
+from multiprocessing import Pool, Manager, log_to_stderr
 from pymongo import MongoClient
+import logging
 
 from cap.models import ScalarVariable, ArrayVariable, EntityScalarVariable, \
     InteractionScalarGroup, InteractionScalarVariable
-
 from cap import const
+from cap.aux import sigmoid
 
 
-_THREADS = 4
-
-client = MongoClient()
-db = client.sample
-db.votes.drop()
-db.groups.drop()
-db.variables.drop()
-db.params.drop()
+_THREADS = 6
+_PARALLEL = True 
 
 
 def expectation_maximization(groups, votes):
@@ -47,43 +43,45 @@ def expectation_maximization(groups, votes):
       Returns:
         None. Variable and Parameter objects are changes in place.
   """
-  # Putting votes in MongoDB
-  for v_id, vote in votes.iteritems():
-    vote['_id'] = str(v_id)
-    db.votes.insert_one(vote)
-  # Putting groups in MongoDB
-  print groups
+  # TODO: Put a function to obtain dict from objects
+  d_groups = {} 
   for g_id, group in groups.iteritems():
     d_group = {}
     d_group['_id'] = str(g_id)
     d_group['pair_name'] = group.pair_name
-    d_group['size'] = group.size
     if isinstance(group, InteractionScalarGroup):
       d_group['entity_type_1'] = group.e_type[0]
       d_group['entity_type_2'] = group.e_type[1]
     else:
       d_group['entity_type'] = group.e_type
     d_group['shape'] = group.shape
-    db.groups.insert_one(d_group)
-  # Putting variables in MongoDB
+    d_groups[g_id] = d_group
+  d_vars = {}
   for group in groups.itervalues():
+    d_vars[group.name] = {}
     for variable in group.iter_variables():
       d_var = {}
       if isinstance(variable, InteractionScalarVariable):
-        d_var['entity_id_1'] = variable.entity_id[0]
-        d_var['entity_id_2'] = variable.entity_id[1]
+        d_var['related_votes'] = [_id for _id in votes if \
+          votes[_id][variable.e_type[0]] == variable.entity_id[0] and \
+          votes[_id][variable.e_type[1]] == variable.entity_id[1]]
       else:
-        d_var['entity_id'] = variable.entity_id
-      d_var['group'] = variable.name
-      d_var['last_sample'] = variable.value if isinstance(variable,
-          ScalarVariable) else variable.value.reshape(-1).tolist()
-      d_var['samples'] = []
-      db.variables.insert_one(d_var)
+        d_var['related_votes'] = [_id for _id in votes if \
+          votes[_id][variable.e_type] == variable.entity_id]
+      d_var['num_votes'] = len(d_var['related_votes'])
+      if isinstance(variable, EntityScalarVariable):
+        d_var['type'] = 'EntityScalar'
+      elif isinstance(variable, InteractionScalarVariable):
+        d_var['type'] = 'InteractionScalar'
+      else:
+        d_var['type'] = 'EntityArray'
+        d_var['last_matrix'] = None
+      d_vars[group.name][variable.entity_id] = d_var
   for i in xrange(const.EM_ITER_FIRST):
     print "EM iteration %d" % i
     print "E-step"
     e_time = time()
-    perform_e_step(groups,  votes, const.GIBBS_SAMPLES_FIRST)
+    perform_e_step(groups, d_groups, votes, d_vars, const.GIBBS_SAMPLES_FIRST)
     print "E-step Time:\t%f" % (time() - e_time)
     print "M-step"
     m_time = time()
@@ -95,7 +93,7 @@ def expectation_maximization(groups, votes):
     print "EM iteration %d" % (const.EM_ITER_FIRST + i)
     print "E-step"
     e_time = time()
-    perform_e_step(groups, votes, const.GIBBS_SAMPLES_SECOND)
+    perform_e_step(groups, d_groups, votes, d_vars, const.GIBBS_SAMPLES_SECOND)
     print "E-step Time:\t%f" % (time() - e_time)
     print "M-step"
     m_time = time()
@@ -107,7 +105,7 @@ def expectation_maximization(groups, votes):
     print "EM iteration %d" % (const.EM_ITER_FIRST + const.EM_ITER_SECOND + i)
     print "E-step"
     e_time = time()
-    perform_e_step(groups, votes, const.GIBBS_SAMPLES_THIRD)
+    perform_e_step(groups, d_groups, votes, d_vars, const.GIBBS_SAMPLES_THIRD)
     print "E-step Time:\t%f" % (time() - e_time)
     print "M-step"
     m_time = time()
@@ -117,7 +115,7 @@ def expectation_maximization(groups, votes):
     print "------------------------"
 
 
-def perform_e_step(groups, votes, n_samples):
+def perform_e_step(groups, d_groups, votes, d_vars, n_samples):
   """ Performs E-step of EM algorithm. Consists of calculating the expectation
       of the complete log-likelihood with respect to the posterior of latent
       variables (distribution of latent variables given data and parameters).
@@ -136,21 +134,21 @@ def perform_e_step(groups, votes, n_samples):
           attributes updated. 
   """
   # Putting params in mongoDB
+  d_params = {}
   for group in groups.itervalues():
     param = {}
     param['_id'] = group.name
-    param['weight'] = group.weight_param.value.reshape(-1).tolist()
+    param['weight'] = group.weight_param.value
     param['var'] = group.var_param.value
     param['var_H'] = group.var_H.value
-    db.params.update_one({'_id': group.name}, {'$set': param}, upsert=True) 
-  reset_variables_samples(groups)
-  print "Gibbs Sampling"
-  gibbs_sample(groups, votes, n_samples)
-  print "Calculation of Empiric Stats"
-  calculate_empiric_mean_and_variance(groups)
+    d_params[group.name] = param
+#db.params.update_one({'_id': group.name}, {'$set': param}, upsert=True) 
+  reset_variables_samples(groups, d_vars)
+  d_samples = gibbs_sample(groups, d_groups, votes, d_params, d_vars, n_samples)
+  calculate_empiric_mean_and_variance(groups, d_samples)
 
 
-def reset_variables_samples(groups):
+def reset_variables_samples(groups, d_vars):
   """ Resets sample of variables between EM iterations.
 
       Args:
@@ -162,9 +160,27 @@ def reset_variables_samples(groups):
   for group in groups.itervalues():
     for variable in group.iter_variables():
       variable.reset_samples()
+      d_vars[group.name][variable.entity_id]['last_sample'] = variable.value
+      if 'last_matrix' in d_vars[group.name][variable.entity_id]:
+        d_vars[group.name][variable.entity_id]['last_matrix'] = variable.value \
+            .dot(variable.value.T)
+      if isinstance(variable, ScalarVariable):
+        d_vars[group.name][variable.entity_id]['cond_var'] = 1.0 / (1.0 / group.var_param.value + \
+          float(d_vars[group.name][variable.entity_id]['num_votes']) / group.var_H.value)
+        if isinstance(variable, EntityScalarVariable):
+          d_vars[group.name][variable.entity_id]['var_dot'] = group.weight_param.value.T \
+            .dot(variable.features)[0,0] / group.var_param.value 
+        else:
+          d_vars[group.name][variable.entity_id]['var_dot'] = sigmoid(group.weight_param.value.T \
+            .dot(variable.features)[0,0]) / group.var_param.value 
+      else:
+        d_vars[group.name][variable.entity_id]['inv_var'] = pinv(group.var_param.value * identity(const.K))
+        d_vars[group.name][variable.entity_id]['var_dot'] = \
+            d_vars[group.name][variable.entity_id]['inv_var'].dot(group.weight_param.value) \
+            .dot(variable.features)
 
 
-def gibbs_sample(groups, votes, n_samples):
+def gibbs_sample(groups, d_groups, votes, d_params, d_vars, n_samples):
   """ Performs Gibbs Sampling over groups.
 
       Observation: each Variable object has a value and a list of samples. Once a
@@ -179,64 +195,138 @@ def gibbs_sample(groups, votes, n_samples):
       Returns:
         None. The samples are inserted into Variable objects.
   """
+  d_samples = {}
+  for group in groups.itervalues():
+    d_samples[group.name] = {}
+    for variable in group.iter_variables():
+      d_samples[group.name][variable.entity_id] = []
   for _ in xrange(n_samples):
     for g_name in sorted(groups.keys()):
-      print "--> Starting job of group %s" % g_name
       group = groups[g_name]
-      chunk_size = int(ceil(group.get_size() / float(_THREADS)))
-      print "# variables: %d" % group.get_size()
-      print "chunk size: %d" % chunk_size 
-      n = group.get_size()
-     # groups = manager.dict(groups)
-     # votes = manager.dict(votes)
-     # pool = Pool(processes=_THREADS) 
-     # pool.map(sample_variable, group.iter_variables(), chunk_size)
-     # pool.close()
-     # pool.join()
-      for variable in group.iter_variables():
-        sample_variable(variable)
-      print "--> Ended job of group %s" % g_name
+      variables = [var.entity_id for var in group.iter_variables()]
+      res = []
+      if _PARALLEL:
+        #print "--> Starting job of group %s" % g_name
+        chunk_size = int(ceil(group.get_size() / float(_THREADS)))
+        #print "# variables: %d" % group.get_size()
+        #print "chunk size: %d" % chunk_size 
+        n = group.get_size()
+        pool = Pool(processes=_THREADS)
+        for i in xrange(_THREADS):
+          if i*chunk_size >= n:
+            continue
+         # res.append(sample_variables(g_name, 
+         #     variables[i*chunk_size:(i+1)*chunk_size], 
+         #     d_groups, d_params, d_vars, votes))
+          res.append(pool.apply_async(sample_variables, 
+              (g_name, variables[i*chunk_size:(i+1)*chunk_size], d_groups,
+              d_params, d_vars, votes)))
+        pool.close()
+        pool.join()
+        for r in res:
+          r = r.get()
+          for _id in r:
+            sample = r[_id]
+            d_samples[g_name][_id].append(sample)
+            d_vars[g_name][_id]['last_sample'] = sample
+            if 'last_matrix' in d_vars[g_name][_id]:
+              d_vars[g_name][_id]['last_matrix'] = sample.dot(sample.T)
+        #print "--> Ended job of group %s" % g_name
+      else:
+        res.append(sample_variables(g_name, 
+            variables, 
+            d_groups, d_params, d_vars, votes))
+        for r in res:
+          for _id in r:
+            sample = r[_id]
+            d_samples[g_name][_id].append(sample)
+            d_vars[g_name][_id]['last_sample'] = sample
+            if 'last_matrix' in d_vars[g_name][_id]:
+              d_vars[g_name][_id]['last_matrix'] = sample.dot(sample.T)
+        #for variable in group.iter_variables():
+         # if isinstance(variable, ScalarVariable):
+         #   mean, var = variable.get_cond_mean_and_var(groups, votes)
+         #   sample = normal(mean, sqrt(var))
+         # else:
+         #   mean, cov = variable.get_cond_mean_and_var(groups, votes)
+         #   mean = mean.reshape(-1)
+         #   sample = multivariate_normal(mean, cov)
+         # variable.add_sample(sample)
+  return d_samples
 
-def sample_variable(variable):
-  if isinstance(variable, EntityScalarVariable):
-    mean, var = variable.get_cond_mean_and_var()
-    sample = normal(mean, sqrt(var))
-    #variable.add_sample(sample)
-    d_var = db.variables.find_one({'group': variable.name, 'entity_id':
-        variable.entity_id})
-    print variable.entity_id
-    print d_var
-    d_var['samples'].append(sample)
-    d_var['last_sample'] = sample
-    db.variables.update_one({'group': variable.name, 'entity_id': variable.entity_id}, 
-        {'$set': {'sample': d_var['samples'], 'last_sample':
-        d_var['last_sample']}})
-  elif isinstance(variable, InteractionScalarVariable):
-    mean, var = variable.get_cond_mean_and_var()
-    sample = normal(mean, sqrt(var))
-    #variable.add_sample(sample)
-    d_var = db.variables.find_one({'group': variable.name, 'entity_id_1':
-        variable.entity_id[0], 'entity_id_2': variable.entity_id[1]})
-    d_var['samples'].append(sample)
-    d_var['last_sample'] = sample
-    db.variables.update_one({'group': variable.name, 'entity_id_1':
-        variable.entity_id[0], 'entity_id_2': variable.entity_id[1]}, 
-        {'$set': {'sample': d_var['samples'], 'last_sample':
-        d_var['last_sample']}})
-  elif isinstance(variable, ArrayVariable):
-    mean, cov = variable.get_cond_mean_and_var()
-    mean = mean.reshape(-1)
-    sample = multivariate_normal(mean, cov)
-    #variable.add_sample(sample)
-    d_var = db.variables.find_one({'group': variable.name, 'entity_id':
-        variable.entity_id})
-    d_var['samples'].append(sample)
-    d_var['last_sample'] = sample
-    db.variables.update_one({'group': variable.name, 'entity_id': variable.entity_id}, 
-        {'$set': {'sample': d_var['samples'], 'last_sample':
-        d_var['last_sample']}})
+def get_rest_value(name, vote, d_groups, d_vars):
+  """ Gets the value of the variable as the truth minus all the other terms
+      except the one involving this variable, for a given vote.
 
-def calculate_empiric_mean_and_variance(groups):
+      Args:
+        groups: dictionary of groups.
+        vote: dictionary of a modeled vote.
+
+      Returns:
+        The value of rest, which is equal to the truth value minus all other
+      terms.
+  """    
+  rest = vote['vote']
+  self_group = d_groups[name] 
+  for group in d_groups.values(): #TODO: itervalues
+    if group['_id'] == name or group['_id'] == self_group['pair_name']:
+      continue
+    if 'entity_type_1' in group:
+      key = (vote[group['entity_type_1']], vote[group['entity_type_2']])
+    else: 
+      key = vote[group['entity_type']]
+    if key not in d_vars[group['_id']]:
+      continue
+    var_value = d_vars[group['_id']][key]['last_sample']
+    pair_name = group['pair_name']
+    if pair_name:
+      if group['_id'] > pair_name:
+        continue
+      pair_group = d_groups[pair_name] 
+      pair_value = d_vars[pair_name][vote[pair_group['entity_type']]] \
+          ['last_sample']
+      rest = rest - var_value.T.dot(pair_value)[0,0]
+    else:
+      rest = rest - var_value
+  return rest
+
+
+def sample_variables(name, var_ids, d_groups, d_params, d_vars, votes):
+  samples = {}
+  param = d_params[name]
+  for var_id in var_ids:
+    d_var = d_vars[name][var_id]
+    if d_var['type'] != 'EntityArray':
+      variance = 0.0
+      mean = 0.0
+      for i in d_var['related_votes']:
+        vote = votes[i] 
+        rest = get_rest_value(name, vote, d_groups, d_vars)
+        mean += rest
+      mean /= param['var_H']
+      var = d_var['cond_var']  
+      mean = var * (mean + d_var['var_dot'])
+      sample = normal(mean, sqrt(var))
+    else:
+      variance = zeros((const.K, const.K))
+      mean = zeros((const.K, 1))
+      group = d_groups[name] 
+      pair_group = d_groups[group['pair_name']] 
+      for i in d_var['related_votes']:
+        vote = votes[i] 
+        rest = get_rest_value(name, vote, d_groups, d_vars)
+        pair_var = d_vars[group['pair_name']][vote[pair_group['entity_type']]]
+        variance += pair_var['last_matrix'] 
+        mean += rest * pair_var['last_sample']
+      mean /= param['var_H']
+      cov = pinv(variance / param['var_H'] + d_var['inv_var'])
+      mean = cov.dot(d_var['var_dot'] + mean)
+      mean = mean.reshape(-1)
+      sample = multivariate_normal(mean, cov).reshape(group['shape'])
+    samples[var_id] = sample
+  return samples 
+
+def calculate_empiric_mean_and_variance(groups, d_samples):
   """ Calculates empiric mean and variance of the groups from samples.
 
       Args:
@@ -248,9 +338,9 @@ def calculate_empiric_mean_and_variance(groups):
   """
   for group in groups.itervalues():
     for variable in group.iter_variables():
-      d_var = db.variables.find_one({'group': variable.name, 'entity_id':
-        variable.entity_id})
-      variable.samples = d_var.samples
+      #if _PARALLEL:
+      variable.samples = d_samples[variable.name][variable.entity_id]
+      variable.num_samples = len(variable.samples)
       variable.calculate_empiric_mean()
       variable.calculate_empiric_var()
 

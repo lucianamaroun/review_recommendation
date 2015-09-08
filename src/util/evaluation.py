@@ -77,7 +77,7 @@ def get_top_k_relevance(pairs, k):
   for i in xrange(k):
     best = pairs[0]
     best_j = 0
-    for j in xrange(len(pairs)):
+    for j in xrange(1, len(pairs)):
       if (pairs[j][0] > best[0]):
         best = pairs[j]
         best_j = j

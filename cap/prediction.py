@@ -26,7 +26,9 @@ from cap.em import expectation_maximization
 from cap.map_features import map_review_features, map_author_features, \
     map_voter_features, map_users_sim_features, map_users_conn_features, \
     compute_avg_user
+from src.util.evaluation import calculate_ndcg
 
+_SAMPLE = 0.001
 
 def create_variables():
   """ Creates empty latent variable groups with its corresponding parameters.
@@ -161,26 +163,26 @@ def main():
   import pickle
   print 'Reading pickles'
  # reviews, users, _, train, test = model()
- # pickle.dump(reviews, open('pkl/cap_reviews%f.pkl' % _SAMPLE_RATIO, 'w'))
- # pickle.dump(users, open('pkl/cap_users%f.pkl' % _SAMPLE_RATIO, 'w'))
- # pickle.dump(train, open('pkl/cap_train%f.pkl' % _SAMPLE_RATIO, 'w'))
- # pickle.dump(test, open('pkl/cap_test%f.pkl' % _SAMPLE_RATIO, 'w'))
+ # pickle.dump(reviews, open('pkl/cap_reviews%f.pkl' % _SAMPLE, 'w'))
+ # pickle.dump(users, open('pkl/cap_users%f.pkl' % _SAMPLE, 'w'))
+ # pickle.dump(train, open('pkl/cap_train%f.pkl' % _SAMPLE, 'w'))
+ # pickle.dump(test, open('pkl/cap_test%f.pkl' % _SAMPLE, 'w'))
  # similar = get_similar_users(users)
- # pickle.dump(similar, open('pkl/cap_similar%f.pkl' % _SAMPLE_RATIO, 'w'))
+ # pickle.dump(similar, open('pkl/cap_similar%f.pkl' % _SAMPLE, 'w'))
  # trusts = parse_trusts()
- # pickle.dump(trusts, open('pkl/cap_trusts%f.pkl' % _SAMPLE_RATIO, 'w'))
+ # pickle.dump(trusts, open('pkl/cap_trusts%f.pkl' % _SAMPLE, 'w'))
  # sim_author_voter = model_author_voter_similarity(train, users, similar)
- # pickle.dump(sim_author_voter, open('pkl/cap_sim_author_voter%f.pkl' % _SAMPLE_RATIO, 'w'))
+ # pickle.dump(sim_author_voter, open('pkl/cap_sim_author_voter%f.pkl' % _SAMPLE, 'w'))
  # conn_author_voter = model_author_voter_connection(train, users, trusts)
- # pickle.dump(conn_author_voter, open('pkl/cap_conn_author_voter%f.pkl' % _SAMPLE_RATIO, 'w'))
-  reviews = pickle.load(open('pkl/cap_reviews%f.pkl' % _SAMPLE_RATIO, 'r'))
-  users = pickle.load(open('pkl/cap_users%f.pkl' % _SAMPLE_RATIO, 'r'))
-  train = pickle.load(open('pkl/cap_train%f.pkl' % _SAMPLE_RATIO, 'r'))
-  test = pickle.load(open('pkl/cap_test%f.pkl' % _SAMPLE_RATIO, 'r'))
-  similar = pickle.load(open('pkl/cap_similar%f.pkl' % _SAMPLE_RATIO, 'r'))
-  trusts = pickle.load(open('pkl/cap_trusts%f.pkl' % _SAMPLE_RATIO, 'r'))
-  sim_author_voter = pickle.load(open('pkl/cap_sim_author_voter%f.pkl' % _SAMPLE_RATIO, 'r'))
-  conn_author_voter = pickle.load(open('pkl/cap_conn_author_voter%f.pkl' % _SAMPLE_RATIO, 'r'))
+ # pickle.dump(conn_author_voter, open('pkl/cap_conn_author_voter%f.pkl' % _SAMPLE, 'w'))
+  reviews = pickle.load(open('pkl/cap_reviews%f.pkl' % _SAMPLE, 'r'))
+  users = pickle.load(open('pkl/cap_users%f.pkl' % _SAMPLE, 'r'))
+  train = pickle.load(open('pkl/cap_train%f.pkl' % _SAMPLE, 'r'))
+  test = pickle.load(open('pkl/cap_test%f.pkl' % _SAMPLE, 'r'))
+  similar = pickle.load(open('pkl/cap_similar%f.pkl' % _SAMPLE, 'r'))
+  trusts = pickle.load(open('pkl/cap_trusts%f.pkl' % _SAMPLE, 'r'))
+  sim_author_voter = pickle.load(open('pkl/cap_sim_author_voter%f.pkl' % _SAMPLE, 'r'))
+  conn_author_voter = pickle.load(open('pkl/cap_conn_author_voter%f.pkl' % _SAMPLE, 'r'))
   for vote in train:
     vote['vote'] = vote['vote'] / 5.0 # normalization
   train_dict = {i:vote for i, vote in enumerate(train)}
@@ -191,8 +193,8 @@ def main():
   variables = create_variables()
   populate_variables(variables, reviews, users, train, sim_author_voter,
       conn_author_voter)
-  pickle.dump(variables, open('pkl/cap_variables%f.pkl' % _SAMPLE_RATIO, 'w'))
- # variables = pickle.load(open('pkl/cap_variables%f.pkl' % _SAMPLE_RATIO, 'r'))
+  pickle.dump(variables, open('pkl/cap_variables%f.pkl' % _SAMPLE, 'w'))
+ # variables = pickle.load(open('pkl/cap_variables%f.pkl' % _SAMPLE, 'r'))
  # train_truth = [t['vote'] for t in train]
  # overall_avg = float(sum(train_truth)) / len(train_truth)
   
@@ -200,21 +202,24 @@ def main():
   expectation_maximization(variables, train_dict)
 
   print 'Calculate Predictions'
-  pred = calculate_predictions(variables, train, reviews, users, sim_author_voter,
-    conn_author_voter)
    
   print 'TRAINING ERROR'
+  pred = calculate_predictions(variables, train, reviews, users, sim_author_voter,
+    conn_author_voter)
   sse = sum([(pred[i] - train[i]['vote']) ** 2 for i in xrange(len(train))])
   rmse = sqrt(sse/len(train))
   print 'RMSE: %s' % rmse
+  for i in xrange(1, 21):
+    print 'NDCG@%d: %s' % (i, calculate_ndcg(pred, [t['vote'] for t in train], i))
   
+  print 'TESTING ERROR'
   pred = calculate_predictions(variables, test, reviews, users, sim_author_voter,
     conn_author_voter)
-   
-  print 'TESTING ERROR'
   sse = sum([(pred[i] - test[i]['vote']) ** 2 for i in xrange(len(test))])
   rmse = sqrt(sse/len(test))
   print 'RMSE: %s' % rmse
+  for i in xrange(1, 21):
+    print 'NDCG@%d: %s' % (i, calculate_ndcg(pred, [t['vote'] for t in test], i))
 
 
 if __name__ == '__main__':

@@ -40,8 +40,8 @@ _PUNCTUATION = set(['!', '?', ':', ';', ',', '.'])
     # source: http://www.nltk.org/api/nltk.tokenize.html
 _SYMBOLS = punctuation
 
-client = MongoClient('mongodb://localhost:27017/')
-reviews_db = client.review_rec.reviews
+#client = MongoClient('mongodb://localhost:27017/')
+#reviews_db = client.review_rec.reviews
 
 """ Models a review.
 

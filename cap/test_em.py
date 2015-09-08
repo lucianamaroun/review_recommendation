@@ -10,7 +10,7 @@
 
 import unittest
 from numpy import array, identity, absolute
-from numpy.linalg import det
+from numpy.linalg import det, pinv
 from math import log
 
 from cap import models, const, em, aux
@@ -93,6 +93,10 @@ class TinyScenarioTestCase(unittest.TestCase):
     ]
     self.groups = {}
     self.var_H = models.PredictionVarianceParameter('var_H')
+    self.d_groups = {} 
+    self.d_vars = {}
+    self.d_params = {}
+    self.votes_dict = {i:v for i,v in enumerate(self.votes)}
     self._create_groups()
   
   def _create_groups(self):
@@ -138,6 +142,61 @@ class TinyScenarioTestCase(unittest.TestCase):
       self.groups['lambda'].add_instance(e_id, e_feat)
     self.groups['u'].set_pair_name('v')
     self.groups['v'].set_pair_name('u')
+    for g_id, group in self.groups.iteritems():
+      d_group = {}
+      d_group['_id'] = str(g_id)
+      d_group['pair_name'] = group.pair_name
+      d_group['size'] = group.size
+      if isinstance(group, models.InteractionScalarGroup):
+        d_group['entity_type_1'] = group.e_type[0]
+        d_group['entity_type_2'] = group.e_type[1]
+      else:
+        d_group['entity_type'] = group.e_type
+      d_group['shape'] = group.shape
+      self.d_groups[g_id] = d_group
+    for group in self.groups.itervalues():
+      self.d_vars[group.name] = {}
+      for variable in group.iter_variables():
+        d_var = {}
+        if isinstance(variable, models.InteractionScalarVariable):
+          d_var['entity_id_1'] = variable.entity_id[0]
+          d_var['entity_id_2'] = variable.entity_id[1]
+          d_var['related_votes'] = [_id for _id in self.votes_dict if \
+            self.votes_dict[_id][variable.e_type[0]] == variable.entity_id[0] and \
+            self.votes_dict[_id][variable.e_type[1]] == variable.entity_id[1]]
+        else:
+          d_var['entity_id'] = variable.entity_id
+          d_var['related_votes'] = [_id for _id in self.votes_dict if \
+            self.votes_dict[_id][variable.e_type] == variable.entity_id]
+        d_var['num_votes'] = len(d_var['related_votes'])
+        if isinstance(variable, models.ScalarVariable):
+          d_var['cond_var'] = 1.0 / (1.0 / group.var_param.value + \
+            float(d_var['num_votes']) / group.var_H.value)
+        if isinstance(variable, models.EntityScalarVariable):
+          d_var['type'] = 'EntityScalar'
+          d_var['var_dot'] = group.weight_param.value.T \
+            .dot(variable.features)[0,0] / group.var_param.value 
+        elif isinstance(variable, models.InteractionScalarVariable):
+          d_var['type'] = 'InteractionScalar'
+          d_var['var_dot'] = aux.sigmoid(group.weight_param.value.T \
+            .dot(variable.features)[0,0]) / group.var_param.value 
+        else:
+          d_var['type'] = 'EntityArray'
+          d_var['inv_var'] = pinv(group.var_param.value * identity(const.K))
+          d_var['var_dot'] = d_var['inv_var'].dot(group.weight_param.value) \
+              .dot(variable.features)
+          d_var['last_matrix'] = variable.value.dot(variable.value.T)
+        d_var['group'] = variable.name
+        d_var['last_sample'] = variable.value
+        d_var['samples'] = []
+        self.d_vars[group.name][variable.entity_id] = d_var
+    for group in self.groups.itervalues():
+      param = {}
+      param['_id'] = group.name
+      param['weight'] = group.weight_param.value
+      param['var'] = group.var_param.value
+      param['var_H'] = group.var_H.value
+      self.d_params[group.name] = param
 
   def test_rest_alpha(self):
     var = self.groups['alpha'].iter_variables().next()
@@ -149,6 +208,8 @@ class TinyScenarioTestCase(unittest.TestCase):
           self.groups['u'].iter_variables().next().value.T \
           .dot(self.groups['v'].get_instance(vote).value)[0,0]
       self.assertAlmostEqual(var.get_rest_value(self.groups, vote), rest) 
+      self.assertAlmostEqual(var.get_rest_value_db(vote, self.d_groups,
+          self.d_vars), rest) 
       self.assertTrue(rest <= 5)
   
   def test_rest_beta(self):
@@ -172,6 +233,8 @@ class TinyScenarioTestCase(unittest.TestCase):
         self.groups['u'].iter_variables().next().value.T \
         .dot(self.groups['v'].get_instance(vote).value)[0,0]
     self.assertAlmostEqual(var.get_rest_value(self.groups, vote), rest)
+    self.assertAlmostEqual(var.get_rest_value_db(vote, self.d_groups,
+        self.d_vars), rest) 
     self.assertTrue(rest <= 5)
   
   def test_rest_xi(self):
@@ -184,6 +247,8 @@ class TinyScenarioTestCase(unittest.TestCase):
           self.groups['u'].iter_variables().next().value.T \
           .dot(self.groups['v'].get_instance(vote).value)[0,0]
       self.assertAlmostEqual(var.get_rest_value(self.groups, vote), rest) 
+      self.assertAlmostEqual(var.get_rest_value_db(vote, self.d_groups,
+          self.d_vars), rest) 
       self.assertTrue(rest <= 5)
       
   def test_rest_u(self):
@@ -195,6 +260,8 @@ class TinyScenarioTestCase(unittest.TestCase):
           self.groups['gamma'].iter_variables().next().value - \
           self.groups['lambda'].iter_variables().next().value
       self.assertAlmostEqual(var.get_rest_value(self.groups, vote), rest) 
+      self.assertAlmostEqual(var.get_rest_value_db(vote, self.d_groups,
+          self.d_vars), rest) 
       self.assertTrue(rest <= 5)
       
   def test_rest_v(self):
@@ -207,6 +274,8 @@ class TinyScenarioTestCase(unittest.TestCase):
         self.groups['gamma'].iter_variables().next().value - \
         self.groups['lambda'].iter_variables().next().value 
     self.assertAlmostEqual(var.get_rest_value(self.groups, vote), rest)
+    self.assertAlmostEqual(var.get_rest_value_db(vote, self.d_groups,
+        self.d_vars), rest) 
     self.assertTrue(rest <= 5)
     var = iterator.next()
     vote = self.votes[1]  
@@ -216,6 +285,8 @@ class TinyScenarioTestCase(unittest.TestCase):
         self.groups['gamma'].iter_variables().next().value - \
         self.groups['lambda'].iter_variables().next().value 
     self.assertAlmostEqual(var.get_rest_value(self.groups, vote), rest)
+    self.assertAlmostEqual(var.get_rest_value_db(vote, self.d_groups,
+        self.d_vars), rest) 
     self.assertTrue(rest <= 5)
   
   def test_rest_gamma(self):
@@ -228,6 +299,8 @@ class TinyScenarioTestCase(unittest.TestCase):
           self.groups['u'].iter_variables().next().value.T \
           .dot(self.groups['v'].get_instance(vote).value)[0,0]
       self.assertAlmostEqual(var.get_rest_value(self.groups, vote), rest) 
+      self.assertAlmostEqual(var.get_rest_value_db(vote, self.d_groups,
+          self.d_vars), rest) 
       self.assertTrue(rest <= 5)
   
   def test_rest_xi(self):
@@ -240,12 +313,16 @@ class TinyScenarioTestCase(unittest.TestCase):
           self.groups['u'].iter_variables().next().value.T \
           .dot(self.groups['v'].get_instance(vote).value)[0,0]
       self.assertAlmostEqual(var.get_rest_value(self.groups, vote), rest) 
+      self.assertAlmostEqual(var.get_rest_value_db(vote, self.d_groups,
+          self.d_vars), rest) 
       self.assertTrue(rest <= 5)
     
   def test_cond_mean_var_alpha(self):
     prev_lkl = likelihood(self.groups, self.votes)
     var = self.groups['alpha'].iter_variables().next()
-    mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes)
+    var.cond_var = None
+    var.var_dot = None
+    mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes_dict)
     variance = 1.0 / (2.0 / self.groups['alpha'].var_H.value +
         1.0 / self.groups['alpha'].var_param.value)
     mean = variance * ((var.get_rest_value(self.groups, self.votes[0]) + \
@@ -253,11 +330,15 @@ class TinyScenarioTestCase(unittest.TestCase):
         self.groups['alpha'].var_H.value + \
         self.groups['alpha'].weight_param.value.T.dot(var.features)[0,0] / \
         self.groups['alpha'].var_param.value)
-    self.assertAlmostEqual(mean_res, mean)
     self.assertAlmostEqual(var_res, variance)
+    self.assertAlmostEqual(mean_res, mean)
     old_value = var.value
     var.update(float(mean_res))
     self.assertGreaterEqual(likelihood(self.groups, self.votes), prev_lkl)
+    mean_res, var_res = var.get_cond_mean_and_var_db(self.d_groups,
+        self.votes_dict, self.d_params, self.d_vars)
+    self.assertAlmostEqual(var_res, variance)
+    self.assertAlmostEqual(mean_res, mean)
          
   def test_cond_mean_var_beta(self):
     iterator = self.groups['beta'].iter_variables()
@@ -265,7 +346,9 @@ class TinyScenarioTestCase(unittest.TestCase):
     prev_sse = 0
     for vote in self.votes:
       var = iterator.next()
-      mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes)
+      var.cond_var = None
+      var.var_dot = None
+      mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes_dict)
       variance = 1.0 / (1.0 / self.groups['beta'].var_H.value +
           1.0 / self.groups['beta'].var_param.value)
       mean = variance * (var.get_rest_value(self.groups, vote) / \
@@ -277,11 +360,17 @@ class TinyScenarioTestCase(unittest.TestCase):
       prev_lkl = likelihood(self.groups, self.votes)
       var.update(float(mean_res))
       self.assertGreaterEqual(likelihood(self.groups, self.votes), prev_lkl)
+      mean_res, var_res = var.get_cond_mean_and_var_db(self.d_groups,
+          self.votes_dict, self.d_params, self.d_vars)
+      self.assertAlmostEqual(var_res, variance)
+      self.assertAlmostEqual(mean_res, mean)
      
   def test_cond_mean_var_xi(self):
     prev_lkl = likelihood(self.groups, self.votes)
     var = self.groups['xi'].iter_variables().next()
-    mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes)
+    var.cond_var = None
+    var.var_dot = None
+    mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes_dict)
     variance = 1.0 / (2.0 / self.groups['xi'].var_H.value +
         1.0 / self.groups['xi'].var_param.value)
     mean = variance * ((var.get_rest_value(self.groups, self.votes[0]) + \
@@ -293,9 +382,13 @@ class TinyScenarioTestCase(unittest.TestCase):
     self.assertAlmostEqual(var_res, variance)
     var.update(float(mean_res))
     self.assertGreaterEqual(likelihood(self.groups, self.votes), prev_lkl)
+    mean_res, var_res = var.get_cond_mean_and_var_db(self.d_groups,
+        self.votes_dict, self.d_params, self.d_vars)
+    self.assertAlmostEqual(var_res, variance)
+    self.assertAlmostEqual(mean_res, mean)
 
   def test_e_step(self):
-    em.perform_e_step(self.groups, self.votes, 10)
+    em.perform_e_step(self.groups, self.d_groups, self.votes_dict, self.d_vars, 10)
     vote = self.votes[0]
     pred_0 = self.groups['beta'].get_instance(vote).value + \
         self.groups['alpha'].iter_variables().next().value + \
@@ -318,7 +411,7 @@ class TinyScenarioTestCase(unittest.TestCase):
     h_0 = self.groups['lambda'].weight_param.value
     W_0 = self.groups['u'].weight_param.value
     V_0 = self.groups['v'].weight_param.value
-    em.perform_m_step(self.groups, self.votes)
+    em.perform_m_step(self.groups, self.votes_dict)
     g_n = self.groups['beta'].weight_param.value
     d_n = self.groups['alpha'].weight_param.value
     b_n = self.groups['xi'].weight_param.value
@@ -362,4 +455,4 @@ class TinyScenarioTestCase(unittest.TestCase):
         sum(absolute(v.value - V_n.dot(v.features))))
 
 if __name__ == '__main__':
-  unittest.main() 
+  unittest.main()
