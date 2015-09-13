@@ -91,14 +91,16 @@ class ItemBasedModel(object):
           A list of K review ids, the neighbors.
     """
     selected_reviews = [r for r in self.Reviews if user in self.Reviews[r] and 
-        r != reviews]
+        r != review]
+    if len(selected_reviews) < self.K:
+      return selected_reviews
     neighbors = []
     for _ in xrange(self.K): # selecting K top, instead of sorting
       best_i = 0
-      best = selected_review[best_i]
+      best = selected_reviews[best_i]
       for i in xrange(1, len(selected_reviews)):
         r = selected_reviews[i]
-        if r and self.Sim[review][r] > self.Sim[review][best]:
+        if r and (not best or self.Sim[review][r] > self.Sim[review][best]):
           best = r
           best_i = i
       neighbors.append(best)
@@ -133,9 +135,9 @@ class ItemBasedModel(object):
     pred = 0
     sim_total = 0
     for n in neighbors:
-      pred += self.Sim[user][n] * self.Users[n][review]
-      sim_total += self.Sim[user][n]
-    pred /= sim_total
+      pred += self.Sim[review][n] * self.Reviews[n][user]
+      sim_total += self.Sim[review][n]
+    pred = pred / sim_total if sim_total > 0 else nan
     return pred
 
   def predict(self, votes):
@@ -153,7 +155,7 @@ class ItemBasedModel(object):
       u = vote['voter'] if vote['voter'] in self.Users else -1
       r = vote['review'] if vote['review'] in self.Reviews else -1
       if u != -1 and r != -1:
-        pred.append(self._calculate_prediction(u, r, neighbors))
+        pred.append(self._calculate_prediction(u, r))
       else:
         pred.append(nan)
     return pred
@@ -171,7 +173,7 @@ if __name__ == '__main__':
       / len(train)
   
   print 'Fitting Model'
-  model = UserBasedModel()
+  model = ItemBasedModel()
   model.fit(train)
 
   print 'Calculate Predictions'

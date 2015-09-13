@@ -94,15 +94,17 @@ class UserBasedModel(object):
     """
     selected_users = [u for u in self.Users if review in self.Users[u] and u !=
         user]
-    neighbors = sorted(selected_users, key=lambda u: self.Sim[user][u], 
-        reverse=True)[:self.K]
+    if len(selected_users) < self.K:
+      return selected_users
+   # neighbors = sorted(selected_users, key=lambda u: self.Sim[user][u], 
+   #     reverse=True)[:self.K]
     neighbors = []
     for _ in xrange(self.K): # selecting K top, instead of sorting
       best_i = 0
       best = selected_users[best_i]
       for i in xrange(1, len(selected_users)):
         u = selected_users[i]
-        if u and self.Sim[user][u] > self.Sim[user][best]:
+        if u and (not best or self.Sim[user][u] > self.Sim[user][best]):
           best = u
           best_i = i
       neighbors.append(best)
@@ -121,7 +123,7 @@ class UserBasedModel(object):
     self._initialize_matrix(votes)
     self._compute_similarity()
   
-  def _calculate_prediction(self, user, review, neighbors):
+  def _calculate_prediction(self, user, review):
     """ Calculates a single prediction for a given (user, review) pair.
     
         Args:
@@ -133,10 +135,11 @@ class UserBasedModel(object):
     """
     pred = 0
     sim_total = 0
+    neighbors = self._compute_neighbors(user, review)
     for n in neighbors:
       pred += self.Sim[user][n] * self.Users[n][review]
       sim_total += self.Sim[user][n]
-    pred /= sim_total
+    pred = pred / sim_total if sim_total > 0 else nan
     return pred
 
   def predict(self, votes):
@@ -154,8 +157,7 @@ class UserBasedModel(object):
       u = vote['voter'] if vote['voter'] in self.Users else -1
       r = vote['review'] if vote['review'] in self.Reviews else -1
       if u != -1 and r != -1:
-        neighbors = self._compute_neighbors(u, r)
-        pred.append(self._calculate_prediction(u, r, neighbors))
+        pred.append(self._calculate_prediction(u, r))
       else:
         pred.append(nan)
     return pred

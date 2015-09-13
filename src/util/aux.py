@@ -1,4 +1,4 @@
-from numpy import inner
+from numpy import inner, zeros
 from numpy.linalg import norm
 from math import sqrt
 
@@ -27,7 +27,7 @@ def cosine(vector_a, vector_b):
   return cos
  
 
-def vectorize(self, dict_a, dict_b):
+def vectorize(dict_a, dict_b):
   """ Maps two dictionary of values into two vectors in a common space. Each
       unique key defines a dimension; if a key is absent, the value is interpreted
       as zero.
