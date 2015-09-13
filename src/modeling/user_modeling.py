@@ -12,8 +12,7 @@ import math
 from numpy import std, mean, nan
 from networkx import pagerank
 
-from src.modeling.author_voter_modeling import obtain_vectors # put in a specialized module
-from src.util.aux import cosine
+from src.util.aux import cosine, vectorize
 
 
 """ Initializes user features.

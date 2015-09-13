@@ -100,4 +100,4 @@ def calculate_dcg(pred, truth, pos):
 def calculate_ndcg(pred, truth, pos):
   curr_dcg = calculate_dcg(pred, truth, pos)
   best_dcg = calculate_dcg(truth, truth, pos)
-  return curr_dcg / best_dcg
+  return curr_dcg / best_dcg if best_dcg != 0.0 else 1.0

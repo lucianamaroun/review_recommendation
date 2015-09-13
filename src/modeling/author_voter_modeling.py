@@ -20,7 +20,7 @@ from scipy.sparse import csc_matrix
 from scipy.sparse.linalg import splu
 from scipy.linalg import lu
 
-from src.util.aux import cosine
+from src.util.aux import cosine, vectorize
 
 _BETA = 0.005
 
@@ -111,28 +111,6 @@ def get_katz_matrix(trusts):
   return katz, nodes_index
 
 
-""" Maps two dictionary of values into two vectors in a common space. Each
-    unique key defines a dimension; if a key is absent, the value is interpreted
-    as zero.
-
-    Args:
-      dict_a: dictionary containing the one set of values.
-      dict_b: dictionary containing the another set of values.
-
-    Returns:
-      Two numpy arrays with the values in the common space. The number of
-    dimensions is defined by the size of the union of dictionary keys.
-"""
-def obtain_vectors(dict_a, dict_b):
-  dimensions = set(dict_a.keys()).union(set(dict_b.keys()))
-  vec_a = np.zeros(len(dimensions))
-  vec_b = np.zeros(len(dimensions))
-  for dim_index, dim_name in enumerate(dimensions):
-    vec_a[dim_index] = dict_a[dim_name] if dim_name in dict_a else 0
-    vec_b[dim_index] = dict_b[dim_name] if dim_name in dict_b else 0
-  return vec_a, vec_b
-
-
 """ Calculates authoring similarity features between author and voter.
 
     Args:
@@ -147,7 +125,7 @@ def calculate_authoring_similarity(author, voter):
   features = {}
   author_rated = set(author['ratings'].keys())
   voter_rated = set(voter['ratings'].keys())
-  author_ratings, voter_ratings = obtain_vectors(author['ratings'],
+  author_ratings, voter_ratings = vectorize(author['ratings'],
       voter['ratings'])
   features['common_rated'] = len(author_rated.intersection(voter_rated))
   features['jacc_rated'] = jaccard(author_rated, voter_rated)

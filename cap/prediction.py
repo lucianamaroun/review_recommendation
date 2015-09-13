@@ -29,6 +29,7 @@ from cap.map_features import map_review_features, map_author_features, \
 from src.util.evaluation import calculate_ndcg
 
 _SAMPLE = 0.001
+_AVG_USER = None
 
 def create_variables():
   """ Creates empty latent variable groups with its corresponding parameters.
@@ -85,14 +86,18 @@ def populate_variables(variables, reviews, users, votes, users_sim, users_conn):
       Returns:
         The same dictionary of Group objects with instances added.
   """
-  avg_user = compute_avg_user(users)
+  global _AVG_USER
+  _AVG_USER = _AVG_USER if _AVG_USER else compute_avg_user(users)
   for vote in votes:
     r_id, a_id, v_id = vote['review'], vote['reviewer'], vote['voter']
-    variables['alpha'].add_instance(v_id, map_voter_features(users[v_id], avg_user))
-    variables['beta'].add_instance(r_id, map_review_features(reviews[r_id]))
-    variables['xi'].add_instance(a_id, map_author_features(users[a_id], avg_user))
-    variables['u'].add_instance(v_id, map_voter_features(users[v_id], avg_user))
-    variables['v'].add_instance(r_id, map_review_features(reviews[r_id]))
+    v_feat = map_voter_features(users[v_id], _AVG_USER)
+    r_feat = map_review_features(reviews[r_id])
+    variables['alpha'].add_instance(v_id, v_feat)
+    variables['beta'].add_instance(r_id, r_feat) 
+    variables['xi'].add_instance(a_id, map_author_features(users[a_id],
+        _AVG_USER))
+    variables['u'].add_instance(v_id, v_feat) 
+    variables['v'].add_instance(r_id, r_feat) 
   for author_voter, features in users_sim.items():
     variables['gamma'].add_instance(author_voter, 
         map_users_sim_features(features))
@@ -122,28 +127,30 @@ def calculate_predictions(groups, test, reviews, users, users_sim, users_conn):
   """
   pred = []
   ignored = 0
+  global _AVG_USER
+  _AVG_USER = _AVG_USER if _AVG_USER else compute_avg_user(users)
   for vote in test:
     r_id, a_id, v_id = vote['review'], vote['reviewer'], vote['voter']
     alfa = beta = 0
     u = v = np.zeros((const.K, 1))
     if v_id in users:
+      feat = map_voter_features(users[v_id], _AVG_USER)
       alfa = groups['alpha'].get_instance(vote).value if \
           groups['alpha'].contains(vote) else groups['alpha'].weight_param.value.T \
-          .dot(map_voter_features(users[v_id]))[0,0]
+          .dot(feat)[0,0]
       u = groups['u'].get_instance(vote).value if groups['u'].contains(vote) \
-          else groups['u'].weight_param.value \
-          .dot(map_voter_features(users[v_id]))
+          else groups['u'].weight_param.value.dot(feat)
     if r_id in reviews:
+      feat = map_review_features(reviews[r_id])
       beta = groups['beta'].get_instance(vote).value if \
           groups['beta'].contains(vote) else groups['beta'].weight_param.value.T \
-          .dot(map_review_features(reviews[r_id]))[0,0]
+          .dot(feat)[0,0]
       v = groups['v'].get_instance(vote).value if groups['v'].contains(vote) \
-          else groups['v'].weight_param.value \
-          .dot(map_review_features(reviews[r_id]))
+          else groups['v'].weight_param.value.dot(feat)
     if a_id in users:
       xi = groups['xi'].get_instance(vote).value if \
           groups['xi'].contains(vote) else groups['xi'].weight_param.value.T \
-          .dot(map_author_features(users[a_id]))[0,0]
+          .dot(map_author_features(users[a_id], _AVG_USER))[0,0]
     gamma = groups['gamma'].get_instance(vote).value if \
         groups['gamma'].contains(vote) else 0
     if not gamma and (a_id, v_id) in users_sim:
@@ -183,11 +190,11 @@ def main():
   trusts = pickle.load(open('pkl/cap_trusts%f.pkl' % _SAMPLE, 'r'))
   sim_author_voter = pickle.load(open('pkl/cap_sim_author_voter%f.pkl' % _SAMPLE, 'r'))
   conn_author_voter = pickle.load(open('pkl/cap_conn_author_voter%f.pkl' % _SAMPLE, 'r'))
-  for vote in train:
-    vote['vote'] = vote['vote'] / 5.0 # normalization
+ # for vote in train:
+ #   vote['vote'] = vote['vote'] / 5.0 # normalization
   train_dict = {i:vote for i, vote in enumerate(train)}
-  for vote in test:
-    vote['vote'] = vote['vote'] / 5.0 # normalization
+ # for vote in test:
+ #   vote['vote'] = vote['vote'] / 5.0 # normalization
    
   print 'Creating variables'
   variables = create_variables()
@@ -209,18 +216,80 @@ def main():
   sse = sum([(pred[i] - train[i]['vote']) ** 2 for i in xrange(len(train))])
   rmse = sqrt(sse/len(train))
   print 'RMSE: %s' % rmse
+  pred_group = {}
+  truth_group = {}
+  for i in xrange(len(train)):
+    key = train[i]['voter']
+    if key not in pred_group:
+      pred_group[key] = []
+      truth_group[key] =[]
+    pred_group[key].append(pred[i])
+    truth_group[key].append(train[i]['vote'])
   for i in xrange(1, 21):
-    print 'NDCG@%d: %s' % (i, calculate_ndcg(pred, [t['vote'] for t in train], i))
+    score_sum = 0.0
+    for key in pred_group:
+      score_sum += calculate_ndcg(pred_group[key], truth_group[key], i)
+    print 'NDCG@%d: %s' % (i, score_sum / len(pred_group))
   
+  output = open('out/cap_performance%f.dat' % _SAMPLE, 'w')
   print 'TESTING ERROR'
   pred = calculate_predictions(variables, test, reviews, users, sim_author_voter,
     conn_author_voter)
   sse = sum([(pred[i] - test[i]['vote']) ** 2 for i in xrange(len(test))])
   rmse = sqrt(sse/len(test))
-  print 'RMSE: %s' % rmse
+  print 'RMSE: %f' % rmse
+  print >> output, 'RMSE: %f' % rmse
+  pred_group_v = {}
+  truth_group_v = {}
+  pred_group_vp = {}
+  truth_group_vp = {}
+  for i in xrange(len(train)):
+    voter = train[i]['voter']
+    product = reviews[train[i]['review']]['product']
+    key = (voter, product)
+    if voter not in pred_group_v:
+      pred_group_v[voter] = []
+      truth_group_v[voter] =[]
+    if key not in pred_group_vp:
+      pred_group_vp[key] = []
+      truth_group_vp[key] =[]
+    pred_group_v[voter].append(pred[i])
+    truth_group_v[voter].append(train[i]['vote'])
+    pred_group_vp[key].append(pred[i])
+    truth_group_vp[key].append(train[i]['vote'])
   for i in xrange(1, 21):
-    print 'NDCG@%d: %s' % (i, calculate_ndcg(pred, [t['vote'] for t in test], i))
-
+    score_sum = 0.0
+    for key in pred_group_vp:
+      score_sum += calculate_ndcg(pred_group_vp[key], truth_group_vp[key], i)
+    score = score_sum / len(pred_group_vp)
+    print 'NDCG@%d: %f (grouped VP)' % (i, score_sum / len(pred_group_vp))
+    print >> output, 'NDCG@%d: %f (grouped VP)' % (i, score_sum / len(pred_group))
+  sizes = []
+  for key in pred_group_vp:
+    sizes.append(len(pred_group_vp[key]))
+  hist = {s: float(sizes.count(s)) / len(sizes) for s in sizes}
+  print >> output, "Histogram of ranking sizes (grouped VP): ",
+  print >> output, hist
+  for i in xrange(1, 21):
+    score_sum = 0.0
+    sizes = []
+    for key in pred_group_v:
+      score_sum += calculate_ndcg(pred_group_v[key], truth_group_v[key], i)
+      sizes.append(len(pred_group_v[key]))
+    score = score_sum / len(pred_group_v)
+    print 'NDCG@%d: %f (grouped V)' % (i, score)
+    print >> output, 'NDCG@%d: %f (grouped V)' % (i, score)
+  sizes = []
+  for key in pred_group_v:
+    sizes.append(len(pred_group_v[key]))
+  hist = {s: float(sizes.count(s)) / len(sizes) for s in sizes}
+  print >> output, "Histogram of ranking sizes (grouped V): ",
+  print >> output, hist
+  for i in xrange(1, 21):
+    score = calculate_ndcg(pred, [v['vote'] for v in test], i)
+    print 'NDCG@%d: %f (all)' % (i, score)
+    print >> output, 'NDCG@%d: %f (all)' % (i, score)
+    
 
 if __name__ == '__main__':
   main() 

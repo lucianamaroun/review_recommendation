@@ -388,71 +388,103 @@ class TinyScenarioTestCase(unittest.TestCase):
     self.assertAlmostEqual(mean_res, mean)
 
   def test_e_step(self):
-    em.perform_e_step(self.groups, self.d_groups, self.votes_dict, self.d_vars, 10)
-    vote = self.votes[0]
-    pred_0 = self.groups['beta'].get_instance(vote).value + \
-        self.groups['alpha'].iter_variables().next().value + \
-        self.groups['xi'].iter_variables().next().value + \
-        self.groups['gamma'].iter_variables().next().value + \
-        self.groups['lambda'].iter_variables().next().value + \
-        self.groups['u'].iter_variables().next().value.T \
+    """ Because of Gibbs Sampling, there is no guarantee that EM iterations will
+        always improve the likelihood. But we assume that the first iteration
+        will in most cases.
+    """
+    for _ in xrange(2):
+      vote = self.votes[0]
+      beta_0 = self.groups['beta'].get_instance(vote).value
+      alpha_0 = self.groups['alpha'].iter_variables().next().value
+      xi_0 = self.groups['xi'].iter_variables().next().value
+      gamma_0 = self.groups['gamma'].iter_variables().next().value
+      lambd_0 = self.groups['lambda'].iter_variables().next().value
+      uv_0 = self.groups['u'].iter_variables().next().value.T \
         .dot(self.groups['v'].get_instance(vote).value)[0,0]
-    beta = self.groups['beta'].get_instance(vote)
-    alpha = self.groups['alpha'].iter_variables().next()
-    xi = self.groups['xi'].iter_variables().next()
-    gamma = self.groups['gamma'].iter_variables().next()
-    lambd = self.groups['lambda'].iter_variables().next()
-    u = self.groups['u'].iter_variables().next()
-    v = self.groups['v'].get_instance(vote)
-    g_0 = self.groups['beta'].weight_param.value
-    d_0 = self.groups['alpha'].weight_param.value
-    b_0 = self.groups['xi'].weight_param.value
-    r_0 = self.groups['gamma'].weight_param.value
-    h_0 = self.groups['lambda'].weight_param.value
-    W_0 = self.groups['u'].weight_param.value
-    V_0 = self.groups['v'].weight_param.value
-    em.perform_m_step(self.groups, self.votes_dict)
-    g_n = self.groups['beta'].weight_param.value
-    d_n = self.groups['alpha'].weight_param.value
-    b_n = self.groups['xi'].weight_param.value
-    r_n = self.groups['gamma'].weight_param.value
-    h_n = self.groups['lambda'].weight_param.value
-    W_n = self.groups['u'].weight_param.value
-    V_n = self.groups['v'].weight_param.value
-   # print beta.value, g_0.T.dot(beta.features)[0,0], g_n.T.dot(beta.features)[0,0]
-   # print alpha.value, d_0.T.dot(alpha.features)[0,0], d_n.T.dot(alpha.features)[0,0]
-   # print xi.value, b_0.T.dot(xi.features)[0,0], b_n.T.dot(xi.features)[0,0]
-   # print gamma.value, r_0.T.dot(gamma.features)[0,0], \
-   #     aux.sigmoid(r_n.T.dot(gamma.features)[0,0])
-   # print lambd.value, h_0.T.dot(lambd.features)[0,0], \
-   #     aux.sigmoid(h_n.T.dot(lambd.features)[0,0])
-   # print u.value
-   # print W_0.dot(u.features)
-   # print W_n.dot(u.features)
-   # print v.value
-   # print V_0.dot(v.features)
-   # print V_n.dot(v.features)
-    self.assertGreaterEqual(abs(beta.value - g_0.T.dot(beta.features)[0,0]), \
-        abs(beta.value - g_n.T.dot(beta.features)[0,0]))
-    self.assertGreaterEqual(abs(alpha.value - d_0.T.dot(alpha.features)[0,0]), \
-        abs(alpha.value - d_n.T.dot(alpha.features)[0,0]))
-    self.assertGreaterEqual(abs(xi.value - b_0.T.dot(xi.features)[0,0]), \
-        abs(xi.value - b_n.T.dot(xi.features)[0,0]))
-    self.assertGreaterEqual(abs(gamma.value - r_0.T.dot(gamma.features)[0,0]), \
-        abs(gamma.value - aux.sigmoid(r_n.T.dot(gamma.features)[0,0])))
-    new_likelihood = likelihood(self.groups, self.votes)
-    self.groups['gamma'].weight_param.value = r_0
-    self.assertGreaterEqual(new_likelihood, likelihood(self.groups, self.votes))
-    self.assertGreaterEqual(abs(lambd.value - h_0.T.dot(lambd.features)[0,0]), \
-        abs(lambd.value - aux.sigmoid(h_n.T.dot(lambd.features)[0,0])))
-    self.groups['gamma'].weight_param.value = r_n
-    self.groups['lambda'].weight_param.value = h_0
-    self.assertGreaterEqual(new_likelihood, likelihood(self.groups, self.votes))
-    self.groups['lambda'].weight_param.value = h_n
-    self.assertGreaterEqual(sum(absolute(u.value - W_0.dot(u.features))), \
-        sum(absolute(u.value - W_n.dot(u.features))))
-    self.assertGreaterEqual(sum(absolute(v.value - V_0.dot(v.features))), \
-        sum(absolute(v.value - V_n.dot(v.features))))
+      old_likel = likelihood(self.groups, self.votes)
+      old_pred = self.groups['beta'].get_instance(vote).value + \
+          self.groups['alpha'].iter_variables().next().value + \
+          self.groups['xi'].iter_variables().next().value + \
+          self.groups['gamma'].iter_variables().next().value + \
+          self.groups['lambda'].iter_variables().next().value + \
+          self.groups['u'].iter_variables().next().value.T \
+          .dot(self.groups['v'].get_instance(vote).value)[0,0]
+      em.perform_e_step(self.groups, self.d_groups, self.votes_dict, self.d_vars, 10)
+      pred_0 = self.groups['beta'].get_instance(vote).value + \
+          self.groups['alpha'].iter_variables().next().value + \
+          self.groups['xi'].iter_variables().next().value + \
+          self.groups['gamma'].iter_variables().next().value + \
+          self.groups['lambda'].iter_variables().next().value + \
+          self.groups['u'].iter_variables().next().value.T \
+          .dot(self.groups['v'].get_instance(vote).value)[0,0]
+      beta = self.groups['beta'].get_instance(vote)
+      alpha = self.groups['alpha'].iter_variables().next()
+      xi = self.groups['xi'].iter_variables().next()
+      gamma = self.groups['gamma'].iter_variables().next()
+      lambd = self.groups['lambda'].iter_variables().next()
+      uv = self.groups['u'].iter_variables().next().value.T \
+        .dot(self.groups['v'].get_instance(vote).value)[0,0]
+      print vote['vote'], old_pred, pred_0
+      print alpha_0, alpha.value
+      print beta_0, beta.value
+      print xi_0, xi.value
+      print uv_0, uv
+      print gamma_0, gamma.value
+      print lambd_0, lambd.value
+     # self.assertGreaterEqual(likelihood(self.groups, self.votes), old_likel)
+     # self.assertGreaterEqual((vote['vote'] - old_pred) ** 2, (vote['vote'] -
+     #     pred_0) ** 2)
+      u = self.groups['u'].iter_variables().next()
+      v = self.groups['v'].get_instance(vote)
+      g_0 = self.groups['beta'].weight_param.value
+      d_0 = self.groups['alpha'].weight_param.value
+      b_0 = self.groups['xi'].weight_param.value
+      r_0 = self.groups['gamma'].weight_param.value
+      h_0 = self.groups['lambda'].weight_param.value
+      W_0 = self.groups['u'].weight_param.value
+      V_0 = self.groups['v'].weight_param.value
+      em.perform_m_step(self.groups, self.votes_dict)
+      g_n = self.groups['beta'].weight_param.value
+      d_n = self.groups['alpha'].weight_param.value
+      b_n = self.groups['xi'].weight_param.value
+      r_n = self.groups['gamma'].weight_param.value
+      h_n = self.groups['lambda'].weight_param.value
+      W_n = self.groups['u'].weight_param.value
+      V_n = self.groups['v'].weight_param.value
+      print beta.value, g_0.T.dot(beta.features)[0,0], g_n.T.dot(beta.features)[0,0]
+      print alpha.value, d_0.T.dot(alpha.features)[0,0], d_n.T.dot(alpha.features)[0,0]
+      print xi.value, b_0.T.dot(xi.features)[0,0], b_n.T.dot(xi.features)[0,0]
+      print gamma.value, r_0.T.dot(gamma.features)[0,0], \
+          aux.sigmoid(r_n.T.dot(gamma.features)[0,0])
+      print lambd.value, h_0.T.dot(lambd.features)[0,0], \
+          aux.sigmoid(h_n.T.dot(lambd.features)[0,0])
+      print u.value
+      print W_0.dot(u.features)
+      print W_n.dot(u.features)
+      print v.value
+      print V_0.dot(v.features)
+      print V_n.dot(v.features)
+      self.assertGreaterEqual(abs(beta.value - g_0.T.dot(beta.features)[0,0]), \
+          abs(beta.value - g_n.T.dot(beta.features)[0,0]))
+      self.assertGreaterEqual(abs(alpha.value - d_0.T.dot(alpha.features)[0,0]), \
+          abs(alpha.value - d_n.T.dot(alpha.features)[0,0]))
+      self.assertGreaterEqual(abs(xi.value - b_0.T.dot(xi.features)[0,0]), \
+          abs(xi.value - b_n.T.dot(xi.features)[0,0]))
+      self.assertGreaterEqual(abs(gamma.value - r_0.T.dot(gamma.features)[0,0]), \
+          abs(gamma.value - aux.sigmoid(r_n.T.dot(gamma.features)[0,0])))
+      new_likelihood = likelihood(self.groups, self.votes)
+      self.groups['gamma'].weight_param.value = r_0
+      self.assertGreaterEqual(new_likelihood, likelihood(self.groups, self.votes))
+      self.assertGreaterEqual(abs(lambd.value - h_0.T.dot(lambd.features)[0,0]), \
+          abs(lambd.value - aux.sigmoid(h_n.T.dot(lambd.features)[0,0])))
+      self.groups['gamma'].weight_param.value = r_n
+      self.groups['lambda'].weight_param.value = h_0
+      self.assertGreaterEqual(new_likelihood, likelihood(self.groups, self.votes))
+      self.groups['lambda'].weight_param.value = h_n
+      self.assertGreaterEqual(sum(absolute(u.value - W_0.dot(u.features))), \
+          sum(absolute(u.value - W_n.dot(u.features))))
+      self.assertGreaterEqual(sum(absolute(v.value - V_0.dot(v.features))), \
+          sum(absolute(v.value - V_n.dot(v.features))))
 
 if __name__ == '__main__':
   unittest.main()
