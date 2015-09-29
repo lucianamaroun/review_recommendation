@@ -29,7 +29,7 @@ user_reviews = {}
 for review in parse_reviews():
   if not review['votes']:
     continue
-  user = review['user']
+  user = review['author']
   if user not in user_votes:
     user_votes[user] = []
     user_reviews[user] = 0

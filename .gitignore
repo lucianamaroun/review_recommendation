@@ -1,9 +1,8 @@
 data/*
-plot/*
-pkl/*
 old*
 out*
-svm_rank/*
+methods/svm_rank/*
+methods/rlfm/*
 \.DS_Store*
 *\.pyc
 *~
@@ -11,3 +10,6 @@ svm_rank/*
 *\.txt
 *\.mod
 *\.dat
+*\.old
+algorithms/svm_rank*
+algorithms/rlfm*

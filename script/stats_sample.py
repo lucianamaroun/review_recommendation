@@ -10,9 +10,13 @@
 
 
 from datetime import datetime
+from sys import argv
+
+from pickle import load
 
 from preprocessing.parsing import parse_reviews
 
+sample = float(argv[1])
 
 num_rev = 0
 num_voted = 0
@@ -24,7 +28,8 @@ reviewers = set()
 raters = set()
 products = set()
 min_date = max_date = None
-for r in parse_reviews():
+reviews = load(open('out/pkl/reviews%.2f.pkl' % (sample * 100), 'r'))
+for r in reviews.itervalues():
   num_rev += 1
   rvr = r['author']
   if rvr not in reviewers:
