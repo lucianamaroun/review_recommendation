@@ -20,13 +20,13 @@ from preprocessing.interaction_modeling import model_author_voter_similarity, \
     model_author_voter_connection
 
 
-_NUM_THREADS = 6
-_SAMPLE = True 
-_SAMPLE_RATIO = 0.001
+_NUM_THREADS = 7
+#_SAMPLE = False 
+#_SAMPLE_RATIO = 0.05 if _SAMPLE else 1
 _OUTPUT_DIR = 'out/pkl'
 
 
-def model(ratio=_SAMPLE_RATIO):
+def model():#ratio=_SAMPLE_RATIO):
   """ Models reviews, users and votes in order to generate features from
       train and test sets. Aggregated statistics from test set includes reviews
       from both train and test set.
@@ -40,37 +40,36 @@ def model(ratio=_SAMPLE_RATIO):
   """
   print 'Getting trust'
   trusts = parse_trusts()
-  dump(trusts, open('%s/trusts%.2f.pkl' % (_OUTPUT_DIR, _SAMPLE_RATIO * 100), 'w'))
+  dump(trusts, open('%s/trusts.pkl' % _OUTPUT_DIR, 'w'))
 
-  if _SAMPLE:
-    print 'Sampling reviews'
-    reviews = {r['id']:r for r in sample_reviews(_SAMPLE_RATIO)}
-  else:
-    reviews = {r['id']:r for r in parse_reviews()}
+ # if _SAMPLE:
+ #   print 'Sampling reviews'
+ #   reviews = {r['id']:r for r in sample_reviews(_SAMPLE_RATIO)}
+ # else:
+  reviews = {r['id']:r for r in parse_reviews()}
 
   print 'Modeling votes'
   votes = model_votes(reviews)
-  train, validation, test = split_votes(votes)
-  dump(train, open('%s/train%.2f.pkl' % (_OUTPUT_DIR, _SAMPLE_RATIO * 100), 'w'))
-  dump(validation, open('%s/validation%.2f.pkl' % (_OUTPUT_DIR, _SAMPLE_RATIO * 100), 'w'))
-  dump(test, open('%s/test%.2f.pkl' % (_OUTPUT_DIR, _SAMPLE_RATIO * 100), 'w'))
-    
-  print 'Modeling reviews'
-  model_reviews_parallel(_NUM_THREADS, train, reviews)
-  dump(reviews, open('%s/reviews%.2f.pkl' % (_OUTPUT_DIR, _SAMPLE_RATIO * 100), 'w'))
-
-  print 'Modeling users'
-  test_users = set([v['author'] for v in test]).union(set([v['voter'] for v in
-      test]))
-  users = model_users(reviews, train, test_users, trusts)
-  dump(users, open('%s/users%.2f.pkl' % (_OUTPUT_DIR, _SAMPLE_RATIO * 100), 'w'))
-
-  print 'Modeling author-voter interaction'
-  test_pairs = [(v['author'], v['voter']) for v in test]
-  sim = model_author_voter_similarity(train, users, test_pairs)
-  dump(sim, open('%s/sim%.2f.pkl' % (_OUTPUT_DIR, _SAMPLE_RATIO * 100), 'w'))
-  conn = model_author_voter_connection(train, users, trusts, test_pairs)
-  dump(conn, open('%s/conn%.2f.pkl' % (_OUTPUT_DIR, _SAMPLE_RATIO * 100), 'w'))
+  sets = split_votes(votes)
+  for (i, split) in enumerate(sets):
+    train, val, test = split
+    dump(train, open('%s/train-%d.pkl' % (_OUTPUT_DIR, i), 'w'))
+    dump(val, open('%s/validation-%d.pkl' % (_OUTPUT_DIR, i), 'w'))
+    dump(test, open('%s/test-%d.pkl' % (_OUTPUT_DIR, i), 'w'))
+    print 'Modeling reviews %d' % i
+    model_reviews_parallel(_NUM_THREADS, train, reviews)
+    dump(reviews, open('%s/reviews-%d.pkl' % (_OUTPUT_DIR, i), 'w'))
+    print 'Modeling users %d' % i
+    test_users = set([v['author'] for v in val + test]) \
+        .union(set([v['voter'] for v in val + test]))
+    users = model_users(reviews, train, test_users, trusts)
+    dump(users, open('%s/users-%d.pkl' % (_OUTPUT_DIR, i), 'w'))
+    print 'Modeling author-voter interaction %d' % i
+    test_pairs = [(v['author'], v['voter']) for v in val + test]
+    sim = model_author_voter_similarity(train, users, test_pairs)
+    dump(sim, open('%s/sim-%d.pkl' % (_OUTPUT_DIR, i), 'w'))
+    conn = model_author_voter_connection(train, users, trusts, test_pairs)
+    dump(conn, open('%s/conn-%d.pkl' % (_OUTPUT_DIR, i), 'w'))
 
 
 if __name__ == '__main__':

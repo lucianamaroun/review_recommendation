@@ -12,6 +12,10 @@
 from math import ceil
 from datetime import datetime
 
+_SLIDE = 0.05
+_SPLITS = 5
+_TRAIN_RATIO = 0.4
+_VAL_RATIO = 0.1
 
 def model_votes(reviews):
   """ Models votes with basic identification data (review id, reviewer id, voter 
@@ -52,9 +56,17 @@ def split_votes(votes):
       with 50% of votes, the second representing the validation set with 10% of
       votes, and the third is the test set with 40% of votes.
   """
-  sorted_reviews = sorted(votes, key=lambda v:
-      datetime.strptime(v['date'], '%d.%m.%Y'))
-  first_cut_point = int(ceil(len(votes) / 2.0))
-  second_cut_point = first_cut_point + int(ceil(len(votes) / 10.0))
-  return votes[:first_cut_point], votes[first_cut_point:second_cut_point], \
-      votes[second_cut_point:]
+  votes = sorted(votes, key=lambda v: datetime.strptime(v['date'], '%d.%m.%Y'))
+  sets = []
+  size = len(votes)
+  delta = int(ceil(size * _SLIDE))
+  w_size = size - delta * (_SPLITS - 1)
+  for i in xrange(_SPLITS):
+    start = delta * i
+    window = votes[start:start+w_size]
+    train_cut = int(ceil(w_size * _TRAIN_RATIO))
+    val_cut = train_cut + int(ceil(w_size * _VAL_RATIO))
+    set_split = window[:train_cut], window[train_cut:val_cut], \
+        window[val_cut:]
+    sets.append(set_split)
+  return sets 

@@ -6,7 +6,7 @@
     latent vectors.
 
     Usage:
-      $ python -m methods.betf.mf [-s <sample_size>] [-k <k>]
+      $ python -m methods.betf.mf [-k <k>]
     where <sample_size> is a float with the fraction of the sample and K is an
     integer with the number of latent factor dimensions.
 """
@@ -19,6 +19,7 @@ from numpy import nan, isnan
 from numpy.random import random
 from pickle import load
 
+from algorithms.const import NUM_SETS, RANK_SIZE, REP 
 from evaluation.metrics import calculate_rmse, calculate_ndcg
 
 
@@ -26,8 +27,8 @@ K = 5
 _ITER = 1000      # number of iterations of stochastic gradient descent
 _ALPHA = 0.01     # starting learning rate (MOGHADDAM, with update)
 _BETA = 0.01      # regularization factor (MOGHADDAM)
-_SAMPLE = 0.05 
 _TOL = 1e-6
+_VAL_DIR = 'out/val'
 _OUTPUT_DIR = 'out/pred'
 _PKL_DIR = 'out/pkl'
 
@@ -43,10 +44,7 @@ def load_args():
   """
   i = 1
   while i < len(argv): 
-    if argv[i] == '-s':
-      global _SAMPLE
-      _SAMPLE = float(argv[i+1])
-    elif argv[i] == '-k':
+    if argv[i] == '-k':
       global K
       K = int(argv[i+1])
     else:
@@ -71,8 +69,8 @@ class MF_Model(object):
     self.R = None # Matrix of review latent arrays (N_r, K)
     self.user_map = None # Map from user ids to matrix indices (lines)
     self.review_map = None # Map from review ids to matrix indices (lines)
-    self.review_bias = None
-    self.user_bias = None
+    self.review_bias = none
+    self.user_bias = none
     self.overall_mean = None
 
   def _initialize_matrices(self, votes):
@@ -192,30 +190,53 @@ class MF_Model(object):
 if __name__ == '__main__':
   load_args()
   
-  print 'Reading pickles'
-  train = load(open('%s/train%.2f.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  test = load(open('%s/test%.2f.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  overall_avg = float(sum([float(v['vote']) for v in train])) / len(train)
-  
-  print 'Fitting Model'
-  model = MF_Model()
-  model.fit(train)
+  for i in xrange(NUM_SETS):
+    print 'Reading pickles'
+    train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
+    val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
+    test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
+    reviews = load(open('%s/reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
+    truth = [v['vote'] for v in train]
+    overall_avg = float(sum(truth)) / len(train)
+    
+    for j in xrange(REP):
+      print 'Fitting Model'
+      model = MF_Model()
+      model.fit(train)
 
-  print 'Calculating Predictions'
-  pred = model.predict(train)
-   
-  print 'TRAINING ERROR'
-  truth = [v['vote'] for v in train]
-  rmse = calculate_rmse(pred, truth) 
-  print 'RMSE: %s' % rmse
-  for i in xrange(5, 21, 5):
-    score = calculate_ndcg(pred, truth, i)
-    print 'NDCG@%d: %f' % (i, score)
-  
-  print 'Outputing Prediction'
-  pred = model.predict(test) 
-  output = open('%s/mf%.2f.dat' % (_OUTPUT_DIR, _SAMPLE * 100), 'w')
-  for p in pred:
-    print >> output, overall_avg if isnan(p) else p
-  output.close()
-
+      print 'Calculating Predictions'
+      pred = model.predict(train)
+       
+      print 'TRAINING ERROR'
+      print '-- RMSE: %f' % calculate_rmse(pred, truth)
+      pred_group = {}
+      truth_group = {}
+      for vote in train:
+        voter = vote['voter']
+        product = reviews[vote['review']]['product']
+        key = (voter, product)
+        if key not in pred_group:
+          pred_group[key] = []
+          truth_group[key] =[]
+        pred_group[key].append(pred[i])
+        truth_group[key].append(truth[i])
+      score_sum = 0.0
+      for key in pred_group:
+        ndcg = calculate_ndcg(pred_group[key], truth_group[key], RANK_SIZE)
+        score_sum += ndcg
+      score = score_sum / len(pred_group)
+      print '-- nDCG@%d: %f' % (RANK_SIZE, score)
+      
+      pred = model.predict(val) 
+      print 'Outputting validation prediction'
+      output = open('%s/mf-%d-%d.dat' % (_VAL_DIR, i, j), 'w')
+      for p in pred:
+        print >> output, overall_avg if isnan(p) else p
+      output.close()
+      
+      pred = model.predict(test) 
+      print 'Outputting testing prediction'
+      output = open('%s/mf-%d-%d.dat' % (_OUTPUT_DIR, i, j), 'w')
+      for p in pred:
+        print >> output, overall_avg if isnan(p) else p
+      output.close()

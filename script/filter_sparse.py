@@ -24,7 +24,7 @@ for line in f:
 
 sel_keys = set()
 for key in user_votes:
-  if user_votes[key] >= 5:
+  if user_votes[key] >= 10:
     sel_keys.add(key)
 
 f.seek(0, 0)

@@ -142,9 +142,7 @@ def calculate_network_agg_features(users, trusts):
       Returns:
         None. Changes are made in users dictionary.
   """
-  prank = pagerank(trusts)
   for u_id in users:
-    users[u_id]['pagerank'] = prank[u_id] if u_id in prank else nan
     if u_id not in trusts:
       users[u_id]['avg_rating_dir_net'] = nan 
       users[u_id]['avg_help_giv_tru_net'] = nan
@@ -175,15 +173,16 @@ def calculate_trust_features(users, test_users, trusts):
     if user not in users and user in test_users:
       # cold-start in test but in trust network
       users[user] = create_user(user)
-      users[user]['sd_help_rec'] = nan
-      users[user]['sd_help_giv'] = nan
+  prank = pagerank(trusts)
   for user in users:
     if user not in trusts:
       users[user]['num_trustors'] = 0 
       users[user]['num_trustees'] = 0 
+      users[user]['pagerank'] = 0
     else:
       users[user]['num_trustors'] = trusts.in_degree(user)
       users[user]['num_trustees'] = trusts.out_degree(user)
+      users[user]['pagerank'] = prank[user]
 
 
 def group_votes_by_review(votes):
@@ -248,7 +247,7 @@ def calculate_similar_users(users):
       sim[user_a][user_b] = sim[user_b][user_a] = cosine(vec_a, vec_b)
   for user in users:
     avg = mean(sim[user].values())
-    users[user]['similars'] = set([u for u in sim[user] if sim[user][u] >= avg])
+    users[user]['similars'] = set([u for u in sim[user] if sim[user][u] > avg])
 
 
 def model_users(reviews, train, test_users, trusts):
@@ -281,8 +280,8 @@ def model_users(reviews, train, test_users, trusts):
         users[vote['voter']] = rat_dict
       add_user_vote(users[review['author']], users[vote['voter']], vote['vote'],
           avg_help)
-  finalize_vote_related_features(users)
   calculate_trust_features(users, test_users, trusts)
+  finalize_vote_related_features(users)
   calculate_network_agg_features(users, trusts)
   calculate_similar_users(users)
   calculate_similar_agg_features(users)

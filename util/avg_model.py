@@ -14,7 +14,7 @@ def compute_avg_user(users):
     avg_user[feature] = 0.0
   missing = []
   for feature in avg_user:
-    if feature in ['id', 'ratings', '_id', 'similars']:
+    if feature in ['id', 'ratings', '_id', 'similars', 'trustees', 'trustors']:
       continue
     avg_user[feature] = 0.0
     count = 0

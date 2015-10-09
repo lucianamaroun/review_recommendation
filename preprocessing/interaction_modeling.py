@@ -80,19 +80,7 @@ def adamic_adar_trustees(trusts, user_a, user_b):
   common = trustees_a.intersection(trustees_b)
   score = 0.0
   for user in common:
-    try:
-      score += 1.0 / log(trusts.in_degree(user) + trusts.out_degree(user))
-    except:
-      print trustees_a
-      print trustees_b
-      print common
-      print '--- %s' % user
-      print user in trusts[user_a]
-      print user in trusts[user_b]
-      print trusts.in_degree(user)
-      print trusts.out_degree(user)
-      import sys
-      sys.exit()
+    score += 1.0 / log(trusts.in_degree(user) + trusts.out_degree(user))
   return score
 
 
@@ -132,7 +120,7 @@ def calculate_authoring_similarity(author, voter):
       and voter.
   """
   features = {}
-  if not author and not voter:
+  if not author or not voter:
     features['common_rated'] = nan 
     features['jacc_rated'] = nan 
     features['cos_ratings'] = nan 
@@ -175,13 +163,13 @@ def calculate_connection_strength(author, voter, trusts, katz, nodes_index):
       netwoek between author and voter.
   """
   features = {}
-  if not author or not voter or not author['id'] in trusts or voter['id'] not \
+  if not author or not voter or author['id'] not in trusts or voter['id'] not \
       in trusts:
-    features['jacc_trustees'] = nan 
-    features['jacc_trustors'] = nan
-    features['adamic_adar_trustees'] = nan
-    features['adamic_adar_trustors'] = nan
-    features['katz'] = nan
+    features['jacc_trustees'] = 0.0 # nan 
+    features['jacc_trustors'] = 0.0 # nan
+    features['adamic_adar_trustees'] = 0.0 # nan
+    features['adamic_adar_trustors'] = 0.0 # nan
+    features['katz'] = 0.0 # nan
   else:   
     author_trustees = set(trusts.successors(author['id']))
     voter_trustees = set(trusts.successors(voter['id']))
@@ -228,7 +216,6 @@ def model_author_voter_similarity(train, users, test_pairs):
     else:
       sim_features[(author_id, voter_id)] = \
           calculate_authoring_similarity(None, None)
-
   return sim_features
 
 
