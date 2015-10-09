@@ -8,28 +8,38 @@
     distinguished to explain part of the observed variables, vote and rating.
 
     Usage:
-      $ python -m methods.betf.betf [-s <sample_size>] [-k <k>]
-    where <sample_size> is a float with the fraction of the sample and K is an
-    integer with the number of latent factor dimensions.
+    $ python -m algorithms.betf.prediction [-k <latent_dimensions>]
+      [-l <learning_rate>] [-r <regularization>] [-e <tolerance>]
+      [-i <iterations>]
+    where
+    <latent_dimensions> is an integer with the number of latent dimensions,
+    <learning_rate> is a float representing the update rate of gradient descent,
+    <regularization> is a float with the weight of regularization in objective
+      function,
+    <tolerance> is a float with the tolerance for convergence,
+    <iterations> is an integer with the maximum number of iterations of gradient
+      descent.
 """
 
 
 from math import sqrt
+from sys import argv, exit
 
 from numpy import nan, isnan, tensordot
 from numpy.random import random
 from pickle import load
 
 from util.aux import sigmoid, sigmoid_der1
-from evaluation.metrics import calculate_rmse, calculare_ndcg
+from evaluation.metrics import calculate_rmse, calculate_avg_ndcg
 
 
-K = 2
+_K = 2
 _ITER = 1000    # number of iterations of stochastic gradient descent
 _ALPHA = 1      # starting learning rate
 _BETA = 0.1     # regularization factor
-_SAMPLE = 0.05
 _TOL = 1e-6 
+_PKL_DIR = 'out/pkl'
+_VAL_DIR = 'out/val'
 _OUTPUT_DIR = 'out/pred/'
 
 
@@ -40,18 +50,29 @@ def load_args():
         None.
 
       Returns:
-        A float with the sample size, an integer with dimension K.
+        None. Global variables are updated.      
   """
   i = 1
   while i < len(argv): 
-    if argv[i] == '-s':
-      global _SAMPLE
-      _SAMPLE = float(argv[i+1])
-    elif argv[i] == '-k':
-      global K
-      K = int(argv[i+1])
+    if argv[i] == '-k':
+      global _K
+      _K = int(argv[i+1])
+    elif argv[i] == '-l':
+      global _ALPHA
+      _ALPHA = float(argv[i+1])
+    elif argv[i] == '-r':
+      global _BETA
+      _BETA = float(argv[i+1])
+    elif argv[i] == '-e':
+      global _TOL
+      _TOL = float(argv[i+1])
+    elif argv[i] == '-i':
+      global _ITER
+      _ITER = int(argv[i+1])
     else:
-      print 'Usage: python -m methods.betf.betf [-s <sample_size>] [-k <k>]'
+      print ('Usage: $ python -m algorithms.cf.user_based '
+          '[-k <latent_dimensions>] [-l <learning_rate>] [-r <regularization>]'
+          '[-e <tolerance>] [-i <iterations>]')
       exit()
     i = i + 2
 
@@ -100,70 +121,132 @@ class BETF_Model(object):
     self.voter_map = {u:i for i, u in enumerate(voters)}
     self.author_map = {a:i for i, a in enumerate(authors)}
     self.product_map = {p:i for i, p in enumerate(products)}
-    self.V = random((len(voters), K))
-    self.A = random((len(authors), K))
-    self.P = random((len(products), K))
-    self.S = random((K, K, K))
+    self.V = random((len(voters), _K))
+    self.A = random((len(authors), _K))
+    self.P = random((len(products), _K))
+    self.S = random((_K, _K, _K))
 
   def _calculate_vote_bias(self, votes):
     self.voter_bias = {}
     voter_count = {}
     self.review_bias = {}
     review_count = {}
-    self.vote_avg = 0
+    self.overall_mean = 0
     count = 0
     for vote in votes:
+      self.overall_mean += vote['vote']
+      count += 1
+    self.overall_mean /= float(count)
+    for vote in votes:
       voter = vote['voter']
-      review = vote['review']
       if voter not in self.voter_bias:
         self.voter_bias[voter] = 0
         voter_count[voter] = 0
-      self.voter_bias[voter] += vote['vote']
+      self.voter_bias[voter] += (vote['vote'] - self.overall_mean)
       voter_count[voter] += 1
+    for voter in self.voter_bias:
+      self.voter_bias[voter] /= float(voter_count[voter])
+    for vote in votes:
+      voter = vote['voter']
+      review = vote['review']
       if review not in self.review_bias:
         self.review_bias[review] = 0
         review_count[review] = 0
-      self.review_bias[review] += vote['vote']
+      self.review_bias[review] += (vote['vote'] - self.overall_mean -
+          self.voter_bias[voter]) 
       review_count[review] += 1
-      self.vote_avg += vote['vote']
-      count += 1
-    self.vote_avg /= float(count)
-    for voter in self.voter_bias:
-      self.voter_bias[voter] /= float(voter_count[voter])
-      self.voter_bias[voter] -= self.vote_avg
     for review in self.review_bias:
       self.review_bias[review] /= float(review_count[review])
-      self.review_bias[review] -= self.vote_avg 
+#  def _calculate_vote_bias(self, votes):
+#    self.voter_bias = {}
+#    voter_count = {}
+#    self.review_bias = {}
+#    review_count = {}
+#    self.vote_avg = 0
+#    count = 0
+#    for vote in votes:
+#      voter = vote['voter']
+#      review = vote['review']
+#      if voter not in self.voter_bias:
+#        self.voter_bias[voter] = 0
+#        voter_count[voter] = 0
+#      self.voter_bias[voter] += vote['vote']
+#      voter_count[voter] += 1
+#      if review not in self.review_bias:
+#        self.review_bias[review] = 0
+#        review_count[review] = 0
+#      self.review_bias[review] += vote['vote']
+#      review_count[review] += 1
+#      self.vote_avg += vote['vote']
+#      count += 1
+#    self.vote_avg /= float(count)
+#    for voter in self.voter_bias:
+#      self.voter_bias[voter] /= float(voter_count[voter])
+#      self.voter_bias[voter] -= self.vote_avg
+#    for review in self.review_bias:
+#      self.review_bias[review] /= float(review_count[review])
+#      self.review_bias[review] -= self.vote_avg 
       
-  def _calculate_review_bias(self, reviews):
+  def _calculate_rating_bias(self, reviews):
     self.author_bias = {}
     author_count = {}
     self.product_bias = {}
     product_count = {}
-    self.rating_avg = 0
+    self.overall_mean = 0
     count = 0
-    for review in reviews.itervalues():
+    for review in reviews:
+      self.overall_mean += review['rating']
+      count += 1
+    self.overall_mean /= float(count)
+    for review in reviews:
       author = review['author']
-      product = review['product']
       if author not in self.author_bias:
         self.author_bias[author] = 0
         author_count[author] = 0
-      self.author_bias[author] += review['rating'] 
+      self.author_bias[author] += (review['rating'] - self.overall_mean)
       author_count[author] += 1
+    for author in self.author_bias:
+      self.author_bias[author] /= float(author_count[author])
+    for review in reviews:
+      author = review['author']
+      product = review['product']
       if product not in self.product_bias:
         self.product_bias[product] = 0
         product_count[product] = 0
-      self.product_bias[product] += review['rating']
+      self.product_bias[product] += (review['rating'] - self.overall_mean -
+          self.author_bias[author]) 
       product_count[product] += 1
-      self.rating_avg += review['rating']
-      count += 1
-    self.rating_avg /= float(count)
-    for author in self.author_bias:
-      self.author_bias[author] /= float(author_count[author])
-      self.author_bias[author] -= self.rating_avg 
     for product in self.product_bias:
       self.product_bias[product] /= float(product_count[product])
-      self.product_bias[product] -= self.rating_avg 
+#  def _calculate_review_bias(self, reviews):
+#    self.author_bias = {}
+#    author_count = {}
+#    self.product_bias = {}
+#    product_count = {}
+#    self.rating_avg = 0
+#    count = 0
+#    for review in reviews.itervalues():
+#      author = review['author']
+#      product = review['product']
+#      if author not in self.author_bias:
+#        self.author_bias[author] = 0
+#        author_count[author] = 0
+#      self.author_bias[author] += review['rating'] 
+#      author_count[author] += 1
+#      if product not in self.product_bias:
+#        self.product_bias[product] = 0
+#        product_count[product] = 0
+#      self.product_bias[product] += review['rating']
+#      product_count[product] += 1
+#      self.rating_avg += review['rating']
+#      count += 1
+#    self.rating_avg /= float(count)
+#    for author in self.author_bias:
+#      self.author_bias[author] /= float(author_count[author])
+#      self.author_bias[author] -= self.rating_avg 
+#    for product in self.product_bias:
+#      self.product_bias[product] /= float(product_count[product])
+#      self.product_bias[product] -= self.rating_avg 
 
   def tensor_dot(self, v, a, p):
     """ Performs a tensor dot of three vectors and the central tensor.
@@ -177,9 +260,9 @@ class BETF_Model(object):
           A float, the dot value.
     """    
     dot = 0.0
-    for x in xrange(K):
-      for y in xrange(K):
-        for z in xrange(K):
+    for x in xrange(_K):
+      for y in xrange(_K):
+        for z in xrange(_K):
           dot += self.S[x,y,z] * self.V[v,x] * self.A[a,y] * self.P[p,z]
     return dot
   
@@ -194,8 +277,8 @@ class BETF_Model(object):
           A k-array with the derivative at each dimension of 'v'.
     """
     dot = 0.0
-    for y in xrange(K):
-      for z in xrange(K):
+    for y in xrange(_K):
+      for z in xrange(_K):
         dot += self.S[:,y,z] * self.A[a,y] * self.P[p,z]
     return dot
   
@@ -210,8 +293,8 @@ class BETF_Model(object):
           A k-array with the derivative at each dimension of 'a'.
     """
     dot = 0.0
-    for x in xrange(K):
-      for z in xrange(K):
+    for x in xrange(_K):
+      for z in xrange(_K):
         dot += self.S[x,:,z] * self.V[v,x] * self.P[p,z]
     return dot
   
@@ -226,8 +309,8 @@ class BETF_Model(object):
           A k-array with the derivative at each dimension of 'p'.
     """
     dot = 0
-    for x in xrange(K):
-      for y in xrange(K):
+    for x in xrange(_K):
+      for y in xrange(_K):
         dot += self.S[x,y,:] * self.V[v,x] * self.A[a,y]
     return dot
 
@@ -258,7 +341,7 @@ class BETF_Model(object):
     """
     self._initialize_matrices(votes, reviews)
     self._calculate_vote_bias(votes)
-    self._calculate_review_bias(reviews)
+    self._calculate_rating_bias(reviews)
     previous = float('inf')
     for it in xrange(_ITER):
       _ALPHA = 1.0 / sqrt(it+1)
@@ -270,6 +353,10 @@ class BETF_Model(object):
             self.review_bias[vote['review']] + self.tensor_dot(v, a, p)
         error = float(vote['vote']) / 5.0 - sigmoid(dot) # normalized in (0,1)
         der_sig = sigmoid_der1(dot)
+        self.voter_bias[vote['voter']] += _ALPHA * 2 * (error - _BETA *
+            self.voter_bias[vote['voter']])
+        self.review_bias[vote['review']] += _ALPHA * 2 * (error - _BETA *
+            self.review_bias[vote['review']])
         self.V[v,:] += _ALPHA * (2 * error * der_sig * \
             self.tensor_dot_der_v(a, p) - _BETA * self.V[v,:])                                          
         self.A[a,:] += _ALPHA * (2 * error * der_sig * \
@@ -285,6 +372,10 @@ class BETF_Model(object):
             self.product_bias[review['product']] + self.A[a,:].dot(self.P[p,:]) 
         error = float(review['rating']) / 5.0 - sigmoid(dot) # normalized in (0,1)
         der_sig = sigmoid_der1(dot)
+        self.author_bias[review['author']] += _ALPHA * 2 * (error - _BETA *
+            self.author_bias[review['author']])
+        self.product_bias[review['product']] += _ALPHA * 2 * (error - _BETA *
+            self.product_bias[review['product']])
         self.A[a,:] += _ALPHA * (2 * error * der_sig * self.P[p,] - \
             _BETA * self.A[a,:])
         self.P[p,:] += _ALPHA * (2 * error * der_sig * self.A[a,:] - \
@@ -297,11 +388,13 @@ class BETF_Model(object):
         dot = self.vote_avg + self.voter_bias[vote['voter']] + \
             self.review_bias[vote['review']] + self.tensor_dot(v, a, p)
         value += (float(vote['vote']) / 5.0 - sigmoid(dot)) ** 2 # normalized in (0,1)
-        for i in xrange(K):
+        value += self.voter_bias[vote['voter']] ** 2 + \
+            self.review_bias[vote['review']] ** 2
+        for i in xrange(_K):
           value += _BETA * (self.V[v,i] ** 2 + self.A[a,i] ** 2 + \
               self.P[p,i] ** 2)
-          for j in xrange(K):
-            for k in xrange(K):
+          for j in xrange(_K):
+            for k in xrange(_K):
               value += _BETA * (self.S[i,j,k] ** 2)
       for review in reviews.itervalues():
         a = self.author_map[review['author']]
@@ -309,7 +402,9 @@ class BETF_Model(object):
         dot = self.rating_avg + self.author_bias[review['author']] + \
             self.product_bias[review['product']] + self.A[a,:].dot(self.P[p,:]) 
         value += (float(review['rating']) / 5.0 - sigmoid(dot)) ** 2 # normalized in (0,1)
-        for k in xrange(K):
+        value += self.author_bias[review['author']] ** 2 + \
+            self.product_bias[review['product']] ** 2
+        for k in xrange(_K):
           value += _BETA * (self.V[v,k] ** 2 + self.P[p,k] ** 2)
       if abs(previous - value) < _TOL:
         print 'Break'
@@ -346,35 +441,41 @@ class BETF_Model(object):
 if __name__ == '__main__':
   load_args()
 
-  print 'Reading pickles'
-  reviews = load(open('pkl/reviews%f.pkl' % _SAMPLE, 'r'))
-  train = load(open('pkl/train%f.pkl' % _SAMPLE, 'r'))
-  test = load(open('pkl/test%f.pkl' % _SAMPLE, 'r'))
-  overall_avg = float(sum([float(v['vote']) for v in train])) / len(train)
+  for i in xrange(1):#NUM_SETS):
+    print 'Reading pickles'
+    train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
+    val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
+    test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
+    reviews = load(open('%s/reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
+    truth = [v['vote'] for v in train]
+    overall_avg = float(sum(truth)) / len(train)
   
-  train_reviews_ids = set([vote['review'] for vote in train])
-  train_reviews = {r_id:reviews[r_id] for r_id in train_reviews_ids}
+    train_reviews_ids = set([vote['review'] for vote in train])
+    train_reviews = {r_id:reviews[r_id] for r_id in train_reviews_ids}
    
-  print 'Fitting Model'
-  model = BETF_Model()
-  model.fit(train, train_reviews)
+    print 'Fitting Model'
+    model = BETF_Model()
+    model.fit(train, train_reviews)
 
-  print 'Calculate Predictions'
-  pred = model.predict(train, reviews)
-   
-  print 'TRAINING ERROR'
-  pred = [p * 5.0 for p in pred]
-  truth = [v['vote'] for v in train]
-  rmse = calculate_rmse(pred, truth) 
-  print 'RMSE: %s' % rmse
-  for i in xrange(5, 21, 5):
-    score = calculate_ndcg(pred, truth, i)
-    print 'NDCG@%d: %f' % (i, score)
-    print >> output, 'NDCG@%d: %f' % (i, score)
-  
-  print 'Outputting Prediction'
-  pred = model.predict(test, reviews) 
-  output = open('%s/betf%f.dat' % (_OUTPUT_DIR, _SAMPLE), 'w')
-  for p in pred:
-    print >> output, overall_avg if isnan(p) else p
-  output.close()
+    print 'Calculate Predictions'
+    pred = model.predict(train, reviews)
+    pred = [p * 5.0 for p in pred] 
+    
+    print 'TRAINING ERROR'
+    print '-- RMSE: %f' % calculate_rmse(pred, truth)
+    print '-- nDCG@%d: %f' % (RANK_SIZE, calculate_avg_ndcg(train, reviews, 
+        pred, truth, RANK_SIZE))
+    
+    print 'Outputting Validation Prediction'
+    pred = model.predict(test, reviews) 
+    output = open('%s/betf-%d.dat' % (_VAL_DIR, i), 'w')
+    for p in pred:
+      print >> output, overall_avg if isnan(p) else p
+    output.close()
+    
+    print 'Outputting Test Prediction'
+    pred = model.predict(test, reviews) 
+    output = open('%s/betf-%d.dat' % (_OUTPUT_DIR, i), 'w')
+    for p in pred:
+      print >> output, overall_avg if isnan(p) else p
+    output.close()

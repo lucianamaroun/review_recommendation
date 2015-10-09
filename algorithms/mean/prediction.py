@@ -4,20 +4,19 @@
     Implements simple predictors using mean statistics from test set.
 
     Usage:
-      $ python -m methods.regression.prediction [-s <sample_size>]
-    [-p <predictor>]
+      $ python -m methods.regression.prediction [-p <predictor>]
     where <predictor> is in the set [om, rm, am, vm]
-""""
+"""
 
 
 from sys import argv, exit
 
 from pickle import load
 
+from algorithms.const import NUM_SETS, RANK_SIZE
 from evaluation.metrics import calculate_rmse, calculate_ndcg
 
 
-_SAMPLE = 0.05 
 _PREDICTORS = ['om', 'rm', 'am', 'vm']
 _PRED = 'om'
 _PKL_DIR = 'out/pkl'
@@ -35,10 +34,7 @@ def load_args():
   """
   i = 1
   while i < len(argv): 
-    if argv[i] == '-s':
-      global _SAMPLE
-      _SAMPLE = float(argv[i+1])
-    elif argv[i] == '-p' and argv[i+1] in _PREDICTORS:
+    if argv[i] == '-p' and argv[i+1] in _PREDICTORS:
       global _PRED 
       _PRED = argv[i+1]
     else:
@@ -201,21 +197,36 @@ def main():
   """
   load_args()
 
-  train = load(open('%s/train%.2f.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  test = load(open('%s/test%.2f.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  predictor = fit_predictor(train)
-
-  pred_train = [predictor(v) for v in train]
-  truth_train = [v['vote'] for v in train]
-  print 'TRAINING ERROR'
-  print 'RMSE: %f' % calculate_rmse(pred_train, truth_train)
-  for i in xrange(5, 21, 5):
-    print 'nDCG@%d: %f' % (i, calculate_ndcg(pred_train, truth_train, i))
-
-  output = open('%s/%s%.2f.dat' % (_OUTPUT_DIR, _PRED, _SAMPLE * 100), 'w')
-  for v in test:
-    print >> output, predictor(v)
-  output.close()
+  for i in xrange(NUM_SETS):
+    train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
+    test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
+    reviews = load(open('%s/reviews-%d.pkl'% (_PKL_DIR, i), 'r'))
+    predictor = fit_predictor(train)
+    pred = [predictor(v) for v in train]
+    truth = [v['vote'] for v in train]
+    print 'TRAINING ERROR'
+    print '-- RMSE: %f' % calculate_rmse(pred, truth) 
+    pred_group = {}
+    truth_group = {}
+    for vote in train:
+      voter = vote['voter']
+      product = reviews[vote['review']]['product']
+      key = (voter, product)
+      if key not in pred_group:
+        pred_group[key] = []
+        truth_group[key] =[]
+      pred_group[key].append(pred[i])
+      truth_group[key].append(truth[i])
+    score_sum = 0.0
+    for key in pred_group:
+      score_sum += calculate_ndcg(pred_group[key], truth_group[key], RANK_SIZE)
+    score = score_sum / len(pred_group)
+    print '-- nDCG@%d: %f' % (RANK_SIZE, score)
+    output = open('%s/%s-%d-0.dat' % (_OUTPUT_DIR, _PRED, i), 'w')
+    for v in test:
+      print >> output, predictor(v)
+    output.close()
+  
 
 
 if __name__ == '__main__':

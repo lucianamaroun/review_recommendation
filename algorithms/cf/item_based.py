@@ -10,20 +10,21 @@
 
 
 from math import sqrt
+from pickle import load
 from sys import argv, exit
 
 from numpy import nan, isnan, zeros
 from numpy.random import random
 
+from algorithms.const import NUM_SETS, RANK_SIZE, REP
+from evaluation.metrics import calculate_rmse, calculate_ndcg
 from util.aux import sigmoid, sigmoid_der1, cosine, vectorize
+from util.bias import BiasModel
 
-
-if len(argv) != 2:
-  exit()
 
 K = 20
-_SAMPLE = float(argv[1])
 _PKL_DIR = 'out/pkl'
+_VAL_DIR = 'out/val'
 _OUTPUT_DIR = 'out/pred/'
 
 
@@ -45,6 +46,7 @@ class ItemBasedModel(object):
     self.Sim = {} # Dictionary of reviews's similarities
     self.K = k # Neighborhood size
     self.review_mean = None
+    self.bias = None
 
   def _initialize_matrix(self, votes):
     """ Initializes sparse matrix of votes, represented as a dictionary, and
@@ -64,18 +66,18 @@ class ItemBasedModel(object):
       self.Reviews[review][user] = vote['vote']
       self.Users.add(user)
 
-  def _calculate_review_mean(self, votes):
-    self.review_mean = {}
-    review_count = {}
-    for vote in votes:
-      review = vote['review']
-      if review not in self.review_mean:
-        self.review_mean[review] = 0.0
-        review_count[review] = 0.0
-      self.review_mean[review] += vote['vote']
-      review_count[review] += 1.0
-    for review in self.review_mean:
-      self.review_mean[review] /= review_count[review]
+#  def _calculate_review_mean(self, votes):
+#    self.review_mean = {}
+#    review_count = {}
+#    for vote in votes:
+#      review = vote['review']
+#      if review not in self.review_mean:
+#        self.review_mean[review] = 0.0
+#        review_count[review] = 0.0
+#      self.review_mean[review] += vote['vote']
+#      review_count[review] += 1.0
+#    for review in self.review_mean:
+#      self.review_mean[review] /= review_count[review]
   
   def _compute_similarity(self):
     """ Computes the similarity between every pair of items. Cosine similarity
@@ -136,8 +138,11 @@ class ItemBasedModel(object):
           None. Instance fields are updated.
     """
     self._initialize_matrix(votes)
-    self._calculate_review_mean(votes)
+   # self._calculate_review_mean(votes)
     self._compute_similarity()
+    self.bias = BiasModel()
+    new_votes = self.bias.fit_transform(votes)
+    self._initialize_matrix(new_votes)
   
   def _calculate_prediction(self, user, review):
     """ Calculates a single prediction for a given (user, review) pair.
@@ -181,37 +186,53 @@ class ItemBasedModel(object):
 
 
 if __name__ == '__main__':
-  import pickle
-  print 'Reading pickles'
- # _, _, _, train, test = model()
- # pickle.dump(train, open('pkl/cap_train%f.pkl' % _SAMPLE, 'w'))
- # pickle.dump(test, open('pkl/cap_test%f.pkl' % _SAMPLE, 'w'))
-  train = pickle.load(open('%s/train%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  test = pickle.load(open('%s/test%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  overall_avg = float(sum([float(v['vote']) for v in train])) \
-      / len(train)
-  
-  print 'Fitting Model'
-  model = ItemBasedModel()
-  model.fit(train)
+  for i in xrange(1):#NUM_SETS):
+    print 'Reading pickles'
+    train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
+    val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
+    test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
+    reviews = load(open('%s/reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
+    truth = [v['vote'] for v in train]
+    overall_avg = float(sum(truth)) / len(train)
+    
+    for j in xrange(REP):
+      print 'Fitting Model'
+      model = ItemBasedModel()
+      model.fit(train)
 
-  print 'Calculate Predictions'
-  pred = model.predict(train)
-   
-  print 'TRAINING ERROR'
-  sse = sum([(overall_avg if isnan(pred[i]) else 
-      pred[i] - train[i]['vote']) ** 2 for i in xrange(len(train))])
-  rmse = sqrt(sse/len(train))
-  print 'RMSE: %s' % rmse
-  
-  pred = model.predict(test) 
-  print 'TESTING ERROR'
-  sse = sum([(overall_avg if isnan(pred[i]) else 
-      pred[i] - test[i]['vote']) ** 2 for i in xrange(len(test))])
-  rmse = sqrt(sse/len(test))
-  print 'RMSE: %s' % rmse
-
-  output = open('%s/ib%.2f.dat' % (_OUTPUT_DIR, _SAMPLE * 100), 'w')
-  for p in pred:
-    print >> output, overall_avg if isnan(p) else p
-  output.close()
+      print 'Calculate Predictions'
+      pred = model.predict(train)
+       
+      print 'TRAINING ERROR'
+      print '-- RMSE: %f' % calculate_rmse(pred, truth)
+      pred_group = {}
+      truth_group = {}
+      for vote in train:
+        voter = vote['voter']
+        product = reviews[vote['review']]['product']
+        key = (voter, product)
+        if key not in pred_group:
+          pred_group[key] = []
+          truth_group[key] =[]
+        pred_group[key].append(pred[i])
+        truth_group[key].append(truth[i])
+      score_sum = 0.0
+      for key in pred_group:
+        ndcg = calculate_ndcg(pred_group[key], truth_group[key], RANK_SIZE)
+        score_sum += ndcg
+      score = score_sum / len(pred_group)
+      print '-- nDCG@%d: %f' % (RANK_SIZE, score)
+      
+      pred = model.predict(val) 
+      print 'Outputting validation prediction'
+      output = open('%s/ib-%d-%d.dat' % (_VAL_DIR, i, j), 'w')
+      for p in pred:
+        print >> output, overall_avg if isnan(p) else p
+      output.close()
+      
+      pred = model.predict(test) 
+      print 'Outputting testing prediction'
+      output = open('%s/ib-%d-%d.dat' % (_OUTPUT_DIR, i, j), 'w')
+      for p in pred:
+        print >> output, overall_avg if isnan(p) else p
+      output.close()

@@ -5,36 +5,68 @@
     similarity and fixed neighborhood of parameterized size K.
 
     Usage:
-    $ python -m cf.user_based
+    $ python -m algorithms.cf.user_based [-n <neighborhood>] [-s <sim_func>]
+      [-b <bias>]
+    where
+    <neighborhood> is an integer with the size of the neighboorhod,
+    <sim_func> is a similarity function, either 'cosine' or 'pearson',
+    <bias> indicates whether to use bias, having values 'y' or 'n'.
 """
 
 
 from math import sqrt
+from pickle import load
 from sys import argv
 
 from numpy import nan, isnan, zeros
 from numpy.random import random
+from scipy.stats import pearsonr
 
+from algorithms.const import NUM_SETS, RANK_SIZE, REP
+from evaluation.metrics import calculate_rmse, calculate_avg_ndcg
 from util.aux import sigmoid, sigmoid_der1, cosine, vectorize
 from util.bias import BiasModel
 
 
-if len(argv) != 2:
-  import sys
-  sys.exit()
-
-
-K = 20
-_SAMPLE = float(argv[1])
+_NB = 20
+_SIM = cosine
+_BIAS = True
 _PKL_DIR = 'out/pkl'
 _VAL_DIR = 'out/val'
 _OUTPUT_DIR = 'out/pred'
 
 
+def load_args():
+  """ Loads arguments.
+
+      Args:
+        None.
+
+      Returns:
+        None. Global variables are updated.      
+  """
+  i = 1
+  while i < len(argv): 
+    if argv[i] == '-n':
+      global _NB
+      _NB = int(argv[i+1])
+    elif argv[i] == '-s' and argv[i+1] in ['cosine', 'pearson']:
+      global _SIM
+      _SIM = cosine if _argv[i+1] == 'cosine' else lambda x,y: pearsonr(x,y)[0]
+    elif argv[i] == '-b' and argv[i+1] in ['y', 'n']:
+      global _BIAS
+      _BIAS = True if argv[i+1] == 'y' else False
+    else:
+      print ('Usage: $ python -m algorithms.cf.user_based [-n <neighborhood>]'
+          '[-s <sim_func>] [-b <bias>]')
+      exit()
+    i = i + 2
+
+
 class UserBasedModel(object):
   """ Class implementing a User-Based Collaborative Filtering Module. """ 
 
-  def __init__(self, k=K):
+  def __init__(self, k=_NB):
     """ Initializes empty attributes and K. 
 
         Args:
@@ -146,10 +178,10 @@ class UserBasedModel(object):
     self._initialize_matrix(votes)
     #self._calculate_voter_mean(votes)
     self._compute_similarity()
-    self.bias = BiasModel()
-    new_votes = self.bias.fit_transform(votes)
-    print new_votes[:10]
-    self._initialize_matrix(new_votes)
+    if _BIAS:
+      self.bias = BiasModel()
+      new_votes = self.bias.fit_transform(votes)
+      self._initialize_matrix(new_votes)
 
   def _calculate_prediction(self, user, review):
     """ Calculates a single prediction for a given (user, review) pair.
@@ -190,46 +222,42 @@ class UserBasedModel(object):
         pred.append(self._calculate_prediction(u, r))
       else:
         pred.append(nan)
-    self.bias.add_bias(votes, pred)
+    if _BIAS:
+      self.bias.add_bias(votes, pred)
     return pred
 
 
 if __name__ == '__main__':
-  import pickle
-  print 'Reading pickles'
- # _, _, _, train, test = model()
- # pickle.dump(train, open('pkl/train%f.pkl' % _SAMPLE, 'w'))
- # pickle.dump(test, open('pkl/test%f.pkl' % _SAMPLE, 'w'))
-  train = pickle.load(open('%s/train%.2f.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  val = pickle.load(open('%s/validation%.2f.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  test = pickle.load(open('%s/test%.2f.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  overall_avg = float(sum([float(v['vote']) for v in train])) \
-      / len(train)
+  for i in xrange(NUM_SETS):
+    print 'Reading data'
+    train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
+    val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
+    test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
+    reviews = load(open('%s/reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
+    truth = [v['vote'] for v in train]
+    overall_avg = float(sum(truth)) / len(train)
+    
+    for j in xrange(REP):
+      print 'Fitting Model'
+      model = UserBasedModel()
+      model.fit(train)
+      print 'Calculate Predictions'
+      pred = model.predict(train)
+      print 'TRAINING ERROR'
+      print '-- RMSE: %f' % calculate_rmse(pred, truth)
+      print '-- nDCG@%d: %f' % (RANK_SIZE, calculate_avg_ndcg(train, reviews, 
+          pred, truth, RANK_SIZE))
 
-
-  print 'Fitting Model'
-  model = UserBasedModel()
-  model.fit(train)
-
-  print 'Calculate Predictions'
-  pred = model.predict(train)
-
-  print 'TRAINING ERROR'
-  sse = sum([(overall_avg if isnan(pred[i]) else 
-      pred[i] - train[i]['vote']) ** 2 for i in xrange(len(train))])
-  rmse = sqrt(sse/len(train))
-  print 'RMSE: %s' % rmse
-  
-  pred = model.predict(val) 
-  print 'Outputting validation prediction'
-  output = open('%s/ub%.2f.dat' % (_VAL_DIR, _SAMPLE * 100), 'w')
-  for p in pred:
-    print >> output, overall_avg if isnan(p) else p
-  output.close()
-  
-  pred = model.predict(test) 
-  print 'Outputting testing prediction'
-  output = open('%s/ub%.2f.dat' % (_OUTPUT_DIR, _SAMPLE * 100), 'w')
-  for p in pred:
-    print >> output, overall_avg if isnan(p) else p
-  output.close()
+      pred = model.predict(val) 
+      print 'Outputting validation prediction'
+      output = open('%s/ub-%d-%d.dat' % (_VAL_DIR, i, j), 'w')
+      for p in pred:
+        print >> output, overall_avg if isnan(p) else p
+      output.close()
+      
+      pred = model.predict(test) 
+      print 'Outputting testing prediction'
+      output = open('%s/ub-%d-%d.dat' % (_OUTPUT_DIR, i, j), 'w')
+      for p in pred:
+        print >> output, overall_avg if isnan(p) else p
+      output.close()

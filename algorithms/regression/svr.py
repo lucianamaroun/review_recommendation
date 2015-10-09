@@ -4,43 +4,43 @@
     Use of regression methods for predicting relevance of reviews for users.
 
     Usage:
-      $ python -m script.ml [-s <sample_size>] [-p <predictor>]
-    where <sample_size> is a float with the fraction of reviews contained in the
-    sample and <predictor> is a string with the prediction name, which can be
-    one of "svr", "lr" or "gbrt".
+      $ python -m algo.reg.lr [-c <penalty>] [-k <kernel>] [-e <epsilon>] 
+          [-s <scale>] [-f <feature_set>] [-b <bias>]
+    where
+    <penalty> is a float which weights the error term,
+    <kernel> is in the set ['rbf', 'linear', 'sigmoid', 'poly'],
+    <epsilon> is the error tolerance which are not considered until this
+      distance,
+    <scale> is the type of feature scaling in the set ['all', 'up'] (the first
+      means one scaler for all and the second, one scaler for each user and 
+      product pair for user and product dependent features),
+    <feature_set> is in the set ['www', 'cap', 'all'], and 
+    <bias> is either 'y' or 'n'.
 """
 
 
 from pickle import load
 from sys import argv, exit
-from time import time
 
 from numpy import nan, isnan
-from numpy.random import seed
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.linear_model import Ridge
-from sklearn.preprocessing import MinMaxScaler
 from sklearn.svm import SVR
 
 from algorithms.const import NUM_SETS, RANK_SIZE, REP
-from evaluation.metrics import calculate_rmse, calculate_ndcg
+from evaluation.metrics import calculate_rmse, calculate_avg_ndcg
 from util.avg_model import compute_avg_user, compute_avg_model 
 from util.scaling import fit_scaler, fit_scaler_by_query, scale_features
 
 
-seed(int(time()*1000000)%1000000)
-_PREDICTORS = {'svr': lambda: SVR(C=0.01, epsilon=0.01, kernel='rbf'),
-    'lr': lambda: Ridge(alpha=1000000),
-    'gbrt': lambda: GradientBoostingRegressor(n_estimators=100,
-      learning_rate=0.005, max_depth=3,
-      random_state=int(time()*1000000)%1000000)
-}
-_SAMPLE = 0.05
 _OUTPUT_DIR = 'out/pred'
 _VAL_DIR = 'out/val'
 _PKL_DIR = 'out/pkl'
-_PRED = 'lr'
 _FEAT_TYPE = 'all'
+_BETA = 0.01
+_KERNEL = 'linear'
+_C = 0.01
+_EPS = 0.01
+_SCALE = 'all'
+_BIAS = False
 _REVIEW_FEATS = {
   'www': ['num_tokens', 'num_sents', 'uni_ratio', 'avg_sent',
     'cap_sent', 'noun_ratio', 'adj_ratio', 'comp_ratio', 'verb_ratio',
@@ -104,15 +104,27 @@ def load_args():
   """
   i = 1
   while i < len(argv): 
-    if argv[i] == '-s':
-      global _SAMPLE
-      _SAMPLE = float(argv[i+1])
-    elif argv[i] == '-p' and argv[i+1] in _PREDICTORS:
-      global _PRED 
-      _PRED = argv[i+1]
+    if argv[i] == '-c':
+      global _C
+      _C = float(argv[i+1])
+    elif argv[i] == '-k' and argv[i+1] in ['linear', 'rbf', 'poly', 'rbf']:
+      global _KERNEL 
+      _KERNEL = argv[i+1]
+    elif argv[i] == '-e':
+      global _EPSILON
+      _EPSILON = float(argv[i+1])
+    elif argv[i] == '-s' and argv[i+1] in ['all', 'up']:
+      global _SCALE
+      SCALE = argv[i+1]
+    elif argv[i] == '-f' and argv[i+1] in ['www', 'cap', 'all']:
+      global _FEAT_TYPE
+      _FEAT_TYPE = argv[i+1]
+    elif argv[i] == '-b' and argv[i+1] in ['y', 'n']:
+      global _BIAS
+      _BIAS = True if argv[i+1] == 'y' else False
     else:
-      print ('Usage: python -m methods.regression.prediction [-s <sample_size>]'
-          '[-p <predictor>], <predictor> is in the set [svr, rfr, lr, mart]')
+      print ('Usage: $ python -m algo.reg.svr [-c <penalty>] [-k <kernel>] '
+          '[-e <epsilon>] [-s <scale>] [-f <feature_set>] [-b <bias>]')
       exit()
     i = i + 2
 
@@ -184,72 +196,65 @@ def predict():
   load_args()
   
   for i in xrange(NUM_SETS):
-    for j in xrange(REP if _PRED == 'gbrt' else 1):
-      print 'Reading data'
-      reviews = load(open('%s/reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
-      users = load(open('%s/users-%d.pkl' % (_PKL_DIR, i), 'r'))
-      train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
-      test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
-      val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
-      sim = load(open('%s/sim-%d.pkl' % (_PKL_DIR, i), 'r'))
-      conn = load(open('%s/conn-%d.pkl' % (_PKL_DIR, i), 'r'))
-    
-      avg_user = compute_avg_user(users)
-      avg_sim = compute_avg_model(sim)
-      avg_conn = compute_avg_model(conn)
-      X_train, y_train, qid_train = generate_input(reviews, users, sim, conn, train,
-          avg_user, avg_sim, avg_conn)
-      X_val, _, qid_val = generate_input(reviews, users, sim, conn, val,
-          avg_user, avg_sim, avg_conn)
-      X_test, _, qid_test = generate_input(reviews, users, sim, conn, test,
-          avg_user, avg_sim, avg_conn)
+    print 'Reading data'
+    reviews = load(open('%s/reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
+    users = load(open('%s/users-%d.pkl' % (_PKL_DIR, i), 'r'))
+    train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
+    test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
+    val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
+    sim = load(open('%s/sim-%d.pkl' % (_PKL_DIR, i), 'r'))
+    conn = load(open('%s/conn-%d.pkl' % (_PKL_DIR, i), 'r'))
+ 
+    if _BIAS:
+      pass #TODO
 
+    avg_user = compute_avg_user(users)
+    avg_sim = compute_avg_model(sim)
+    avg_conn = compute_avg_model(conn)
+    X_train, y_train, qid_train = generate_input(reviews, users, sim, conn,
+        train, avg_user, avg_sim, avg_conn)
+    X_val, _, qid_val = generate_input(reviews, users, sim, conn, val, avg_user,
+        avg_sim, avg_conn)
+    X_test, _, qid_test = generate_input(reviews, users, sim, conn, test, 
+        avg_user, avg_sim, avg_conn)
+
+    if _SCALE == 'all':
       scaler = fit_scaler('minmax', X_train)
       X_train = scale_features(scaler, X_train)
       X_val = scale_features(scaler, X_val)
       X_test = scale_features(scaler, X_test)
-     # qid_dep_size = len(sim.itervalues().next()) + len(conn.itervalues().next())
-     # scaler = fit_scaler_by_query('minmax', X_train, qid_train, qid_dep_size)
-     # X_train = scale_features(scaler, X_train, qid_train, qid_dep_size)
-     # X_val = scale_features(scaler, X_val, qid_val, qid_dep_size)
-     # X_test = scale_features(scaler, X_test, qid_test, qid_dep_size)
+    else:
+      qid_dep_size = len(sim.itervalues().next()) + len(conn.itervalues().next())
+      scaler = fit_scaler_by_query('minmax', X_train, qid_train, qid_dep_size)
+      X_train = scale_features(scaler, X_train, qid_train, qid_dep_size)
+      X_val = scale_features(scaler, X_val, qid_val, qid_dep_size)
+      X_test = scale_features(scaler, X_test, qid_test, qid_dep_size)
 
-      clf = _PREDICTORS[_PRED]()
-      clf.fit(X_train , y_train)
-      
-      pred = clf.predict(X_train)
-      truth = [v['vote'] for v in train]
-      print '~ Training error on set %d repetition %d' % (i, j)
-      print '-- RMSE: %f' % calculate_rmse(pred, truth)
-      pred_group = {}
-      truth_group = {}
-      for vote in train:
-        voter = vote['voter']
-        product = reviews[vote['review']]['product']
-        key = (voter, product)
-        if key not in pred_group:
-          pred_group[key] = []
-          truth_group[key] =[]
-        pred_group[key].append(pred[i])
-        truth_group[key].append(truth[i])
-      score_sum = 0.0
-      for key in pred_group:
-        ndcg = calculate_ndcg(pred_group[key], truth_group[key], RANK_SIZE)
-        score_sum += ndcg
-      score = score_sum / len(pred_group)
-      print '-- nDCG@%d: %f' % (RANK_SIZE, score)
+    model = SVR(C=_C, epsilon=_EPS, kernel=_KERNEL)
+    model.fit(X_train , y_train)
+    
+    pred = model.predict(X_train)
+    truth = [v['vote'] for v in train]
+    print '~ Training error on set %d repetition %d' % (i, 0)
+    print 'RMSE: %f' % calculate_rmse(pred, truth)
+    print 'nDCG@%d: %f' % (RANK_SIZE, calculate_avg_ndcg(train, reviews, pred,
+        truth, RANK_SIZE))
 
-      pred = clf.predict(X_val)
-      output = open('%s/%s-%d-%d.dat' % (_VAL_DIR, _PRED, i, j), 'w')
-      for p in pred:
-        print >> output, p
-      output.close()
-      
-      pred = clf.predict(X_test)
-      output = open('%s/%s-%d-%d.dat' % (_OUTPUT_DIR, _PRED, i, j), 'w')
-      for p in pred:
-        print >> output, p
-      output.close()
+    pred = model.predict(X_val)
+    output = open('%s/lr-c:%f,k:%s,e:%f,s:%s,f:%s,b:%s-%d-%d.dat' % (_VAL_DIR, 
+        _C, _KERNEL, _EPSILON, _SCALE, _FEAT_TYPE, 'y' if _BIAS else 'n', i, 0),
+        'w')
+    for p in pred:
+      print >> output, p
+    output.close()
+    
+    pred = model.predict(X_test)
+    output = open('%s/lr-c:%f,k:%s,e:%f,s:%s,f:%s,b:%s-%d-%d.dat' % 
+        (_OUTPUT_DIR, _C, _KERNEL, _EPSILON, _SCALE, _FEAT_TYPE, 
+        'y' if _BIAS else 'n', i, 0), 'w')
+    for p in pred:
+      print >> output, p
+    output.close()
 
 
 if __name__ == '__main__':

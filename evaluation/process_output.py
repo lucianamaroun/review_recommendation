@@ -4,19 +4,26 @@
     Process output of a prediction and evaluates using RMSE and nDCG.
 
     Usage:
-      python -m evaluation.process_output <sample_size> <predictor> <set_type>
-    where <sample_size> is a float with the size of sample to use,
-    <predictor> is a string with the name of the predictor method, and
-    <set_type> is 'val' if validation set is to be used or 'test' if test set is
-    desired.
+      python -m evaluation.process_output <set_type> <predictor>
+        [-r <rep>]
+    where
+    <set_type> indicates whether it is validation or test, coded as 'val' and
+      'test', respectively,
+    <predictor> is a string with the name of the predictor and parameters
+      used in prediction file, 
+    <rep> is an indicator value of the presence of repeated executions for each
+      configuration of this predictor.
 """
 
 
 from math import sqrt
-from sys import argv, exit
-from pickle import load
+from numpy import mean, std
 from os.path import isfile
+from pickle import load
+from scipy.stats import t 
+from sys import argv, exit
 
+from algorithms.const import NUM_SETS, CONF_QT, RANK_SIZE, REP
 from evaluation.metrics import calculate_rmse, calculate_ndcg
 
 
@@ -27,49 +34,47 @@ def parse_args():
         None.
 
       Returns:
-        A float with sample size and a string with predictor name. 
+        A string with predictor description, a string with set type and a
+      boolean indicating presence of repeated executions.
   """
   if len(argv) != 4:
-    print ('Usage: python -m script.evaluation <sample_size_float> '
-        '<predictor_name_string> <set_type_string>')
+    print ('Usage: python -m evaluation.process_output <set_type> <prediction_file>')
     exit()
-  try:
-    sample = float(argv[1])
-  except:
-    print 'Sample size has to be a float'
-  predictor = argv[2]
-  if not isfile('out/pred/%s%.2f.dat' % (predictor, sample * 100)):
-    print 'There is no file with predicted values of %s for %f sample' % \
-        (predictor, sample)
-    exit()
-  set_type = argv[3]
+  set_type = argv[1]
   if set_type != 'val' and set_type != 'test':
-    print 'Set type has to be either \'val\' or \'test\''
+    print '<set_type> has to be either \'val\' or \'test\''
     exit()
-  return sample, predictor, set_type
+  predictor = argv[2]
+  rep = True if argv[3] == 'y' else False
+  if argv[3] not in ['y', 'n']:
+    print '<rep> has to be either y or n'
+    exit()
+  return predictor, set_type, rep
 
 
-def load_data(sample, predictor, set_type):
+def load_data(predictor, set_type, index, rep):
   """ Loads data of predicted and true values to evaluate. 
 
       Args:
-        sample: a float with sample size.
-        predictor: a string with predictor name.
+        predictor: a string with the name and configuration of predictor.
         set_type: string with the set type to be used, 'val' for validation set
       and 'test' for test set.
+        index: integer with current index of set from list of set splits.
+        rep: repetition number of predictor execution.
 
       Returns:
         A float with sample size and a string with predictor name. 
   """
   if set_type == 'val': 
-    votes = load(open('out/pkl/validation%.2f.pkl' % (sample * 100), 'r'))
-    predfile = open('out/val/%s%.2f.dat' % (predictor, sample * 100), 'r')
+    votes = load(open('out/pkl/validation-%d.pkl' % index, 'r'))
+    predfile = open('out/val/%s-%d-%d.dat'% (predictor, index, rep), 'r')
   else:
-    votes = load(open('out/pkl/test%.2f.pkl' % (sample * 100), 'r'))
-    predfile = open('out/pred/%s%.2f.dat' % (predictor, sample * 100), 'r')
+    votes = load(open('out/pkl/test-%d.pkl' % index, 'r'))
+    predfile = open('out/pred/%s-%d-%d.dat'% (predictor, index, rep), 'r')
+  reviews = load(open('out/pkl/reviews-%d.pkl' % index, 'r'))
   pred = [float(line.strip()) for line in predfile]
   predfile.close()
-  return votes, pred
+  return votes, pred, reviews
 
 
 def evaluate_regression(pred, votes, output):
@@ -88,9 +93,9 @@ def evaluate_regression(pred, votes, output):
   rmse = calculate_rmse(pred, truth) 
   print "RMSE: %f" % rmse
   print >> output, "RMSE: %f" % rmse
+  return rmse
 
-
-def evaluate_ranking(pred, votes, output):
+def evaluate_ranking(pred, votes, reviews, output):
   """ Evaluates predicted values using nDCG@K, with K ranging from 1 to 20,
       a ranking metric.
 
@@ -98,6 +103,7 @@ def evaluate_ranking(pred, votes, output):
         pred: a list of floats with predicted values.
         votes: a list of votes, represented as dictionaries, belonging to
       votes set.
+        reviews: a dictionary of reviews.
         output: a file object to print output on.
 
       Returns:
@@ -107,20 +113,23 @@ def evaluate_ranking(pred, votes, output):
   truth_group = {}
   for i in xrange(len(votes)):
     voter = votes[i]['voter']
-    if voter not in pred_group:
-      pred_group[voter] = []
-      truth_group[voter] =[]
-    pred_group[voter].append(pred[i])
-    truth_group[voter].append(votes[i]['vote'])
-  for i in xrange(1, 11):
-    score_sum = 0.0
+    product = reviews[votes[i]['review']]['product']
+    key = (voter, product)
+    if key not in pred_group:
+      pred_group[key] = []
+      truth_group[key] =[]
+    pred_group[key].append(pred[i])
+    truth_group[key].append(votes[i]['vote'])
+  scores = {}
+  for i in xrange(1, RANK_SIZE+1):
+    scores[i] = []
     for key in pred_group:
-      score_sum += calculate_ndcg(pred_group[key], truth_group[key], i)
-    score = score_sum / len(pred_group)
-    if i % 5 == 0:
-      print 'NDCG@%d: %f (grouped V)' % (i, score)
-    print >> output, 'NDCG@%d: %f (grouped V)' % (i, score)
-
+      scores[i].append(calculate_ndcg(pred_group[key], truth_group[key], i))
+    score = sum(scores[i]) / len(pred_group)
+    if i % RANK_SIZE == 0:
+      print 'NDCG@%d: %f' % (i, score)
+    print >> output, 'NDCG@%d: %f' % (i, score)
+  return scores 
 
 def main():
   """ Main function.
@@ -129,14 +138,33 @@ def main():
         None.
 
       Returns:
-        None. Results are output to /out/res/<predictor><sample>.dat file and to
-      stdout.
+        None. Results are output to 
+      /out/res/<predictor>-<set_type>-<set_index>.dat file and to stdout.
   """
-  sample, predictor, set_type = parse_args()
-  votes, pred = load_data(sample, predictor, set_type)
-  output = open('out/res/%s%.2f.dat' % (predictor, sample * 100), 'w')
-  evaluate_regression(pred, votes, output)
-  evaluate_ranking(pred, votes, output)
+  predictor, set_type, rep = parse_args()
+  rmse = []
+  ndcg = []
+  for i in xrange(NUM_SETS):
+    for j in xrange(REP if rep else 1):
+      votes, pred, reviews = load_data(predictor, set_type, i, j)
+      output = open('out/res/%s-%s-%d-%d.dat' % (predictor, set_type, i, j), 'w')
+      rmse.append(evaluate_regression(pred, votes, output))
+      ndcg.append(evaluate_ranking(pred, votes, reviews, output))
+      output.close()
+  
+  output = open('out/res/%s-%s.dat' % (predictor, set_type), 'w')
+  mean_rmse = mean(rmse)
+  sd_rmse = std(rmse, ddof=1)
+  err = t.cdf(CONF_QT, NUM_SETS-1) * sd_rmse / sqrt(NUM_SETS-1) 
+  print 'IC of RMSE: (%f, %f)' % (mean_rmse - err, mean_rmse + err)
+  print >> output, 'IC of RMSE: (%f, %f)' % (mean_rmse - err, mean_rmse + err)
+  for i in xrange(RANK_SIZE):
+    scores = sum([score[i+1] for score in ndcg], []) 
+    mean_ndcg = mean(scores)
+    sd_ndcg = std(scores, ddof=1)
+    err = t.cdf(CONF_QT, len(scores)-1) * sd_ndcg / sqrt(len(scores)-1) 
+    print 'IC of nDCG@%d: (%f, %f)' % (i+1, mean_ndcg - err, mean_ndcg + err)
+    print >> output, 'IC of nDCG@%d: (%f, %f)' % (i+1, mean_ndcg - err, mean_ndcg + err)
   output.close()
 
 if __name__ == '__main__':
