@@ -6,7 +6,10 @@
     Usage: this method is not directly callable.
 """
 
+
 from numpy import reshape, array, isnan
+
+from util.avg_model import compute_avg_user, compute_avg_model
 
 
 def map_review_features(review):
@@ -86,6 +89,7 @@ def map_users_sim_features(users_sim, avg_sim):
   for feature in features:
     if isnan(users_sim[feature]):
       model.append(avg_sim[feature])
+      print ' -- Imputed'
     else:
       model.append(users_sim[feature])
   model = array(model)
@@ -113,3 +117,32 @@ def map_users_conn_features(users_conn, avg_conn):
   return model 
 
 
+def map_features(votes, reviews, users, users_sim, users_conn, trusts):
+  avg_user = compute_avg_user(users)
+  avg_sim = compute_avg_model(users_sim)
+  avg_conn = compute_avg_model(users_conn)
+  features = {'review': [], 'author': [], 'voter': [], 'sim': [], 'conn': []}
+  for vote in votes:
+    r_id, a_id, v_id = vote['review'], vote['author'], vote['voter']
+    r_feat = map_review_features(reviews[r_id])
+    features['review'].append(r_feat)
+    author = users[a_id] if a_id in users else avg_user
+    a_feat = map_author_features(author, avg_user)
+    features['author'].append(a_feat)
+    voter = users[v_id] if v_id in users else avg_user
+    v_feat = map_voter_features(voter, avg_user)
+    features['voter'].append(v_feat)
+    if v_id in users and a_id in users[v_id]['similars']:
+      if (a_id, v_id) in users_sim:
+        sim = users_sim[(a_id, v_id)]
+        sim_feat = map_users_sim_features(sim, avg_sim)
+        features['sim'].append(sim_feat)
+     # sim = users_sim[(a_id, v_id)] if (a_id, v_id) in users_sim else avg_sim
+    if v_id in trusts and a_id in trusts[v_id]:
+     # conn = users_conn[(a_id, v_id)] if (a_id, v_id) in users_conn else \
+     #     avg_conn
+      if (a_id, v_id) in users_conn:
+        conn = users_conn[(a_id, v_id)]
+        conn_feat = map_users_conn_features(conn, avg_conn)
+        features['conn'].append(conn_feat)
+  return features

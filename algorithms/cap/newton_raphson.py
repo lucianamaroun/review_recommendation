@@ -2,13 +2,14 @@
     ---------------------
 
     Computes root of a function using Newton-Raphson method. This method is used
-    in the E-step to compute the parameters of interaction variables regression,
+    in the M-step to compute the parameters of interaction variables regression,
     since it is not linear due to sigmoid function. This is equivalent to
-    finding the root of the derivative of the squared error of the regression,
-    what is done here.
+    finding the root of the derivative of the squared error of regression in
+    general case.
 
     Not directly callable.
 """
+
 
 from numpy import  allclose, zeros
 from numpy.linalg import pinv
@@ -19,12 +20,13 @@ from algorithms.cap.const import NR_ITER, NR_TOL, NR_STEP
 def newton_raphson(fun, der, variable_group, theta_0, n_iter=NR_ITER, eps=NR_TOL, 
     step=NR_STEP):
   """ Applies Newton-Raphson's Method. This method finds an approximation for a 
-      root of a function numerically by continuously updating acording to the
+      root of a function by continuously updating according to the
       derivative and the function at the current value of the variable. 
       
-      Obs: In our case, it finds the optimal value of a function by finding the
-      root of its derivative, thus it uses the first and the second order
-      derivative.
+      Observation:
+      - In CAP, it is used for finding the optimal value of a function by
+      calculating an approximation of the root of its derivative, thus it uses
+      the first and the second order derivative.
 
       Args:
         fun: function which evaluates over theta to calculate the root of.
@@ -35,7 +37,7 @@ def newton_raphson(fun, der, variable_group, theta_0, n_iter=NR_ITER, eps=NR_TOL
         step: update rate.
 
       Returns:
-        The approximated value for root of the function.
+        The approximated value for the root of the function.
   """
   der_val = der(theta_0, variable_group)
   fun_val = fun(theta_0, variable_group)

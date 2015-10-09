@@ -5,10 +5,23 @@
     variables and data distributions' parameters.
 
     Usage:
-      $ python -m algorithms.cap.prediction [-s <sample_size>] [-k <k>]
-    where <sample_size> is a float with the fraction of the sample and K is an
-    integer with the number of latent factor dimensions.
+    $ python -m algorithms.cap.prediction [-k <latent_dimensions>]
+      [-e <em_iterations>] [-s <samples>] [-b <burn_in>] [-n <nr_iterations>]
+      [-t <nr_tolerance>] [-l <nr_learning_rate>] [-a <eta>]
+    where
+    <latent_dimensions> is an integer with the number of latent dimensions,
+    <iterations> is an integer with the maximum number of iterations of gradient
+      descent.
+    <em_iterations> is an integer with number of EM iterations,
+    <samples> is an integer with number of gibbs samples in each EM iteration,
+    <burn_in> is an integer with number of first samples ignored in Gibbs
+      Sampling,
+    <nr_iterations> is an integer with number of newton-raphson iterations,
+    <nr_tolerant> is a float with newton-raphson convergence tolerance,
+    <nr_learning_rate> is a float with newton-raphson learning rate,
+    <eta> is a float constant used in OLS for easier inversion.
 """
+
 
 from math import sqrt
 from sys import argv, exit
@@ -22,40 +35,57 @@ from algorithms.cap.models import EntityScalarGroup, EntityArrayGroup, \
     ArrayVarianceParameter, PredictionVarianceParameter
 from algorithms.cap import const
 from algorithms.cap.em import expectation_maximization
-from algorithms.cap.map_features import map_review_features, map_author_features, \
-    map_voter_features, map_users_sim_features, map_users_conn_features
-from evaluation.metrics import calculate_rmse, calculate_ndcg
+from algorithms.cap.map_features import map_features 
+from algorithms.const import NUM_SETS, RANK_SIZE, REP 
+from evaluation.metrics import calculate_rmse, calculate_avg_ndcg
 from util.avg_model import compute_avg_user, compute_avg_model
 from util.scaling import fit_scaler, scale_features
 
 
-_SAMPLE = 0.001
-_AVG_USER = None
-_AVG_SIM = None
-_AVG_CONN = None
 _OUTPUT_DIR = 'out/pred'
 _VAL_DIR = 'out/val'
 _PKL_DIR = 'out/pkl'
+_K = 5
+_EM_ITER = 10
+_SAMPLES = 100
+_BURN_IN = 10
+_NR_ITER = 50
+_NR_TOL = 1e-6
+_NR_STEP = 0.1
 
 
 def load_args():
-  """ Loads command line arguments.
+  """ Loads arguments.
 
       Args:
         None.
 
       Returns:
-        A float with the sample size, an integer with dimension K.
+        None. Global variables are updated.      
   """
   i = 1
   while i < len(argv): 
-    if argv[i] == '-s':
-      global _SAMPLE
-      _SAMPLE = float(argv[i+1])
-    elif argv[i] == '-k':
+    if argv[i] == '-k':
       const.K = int(argv[i+1])
+    elif argv[i] == '-e':
+      const.EM_ITER = int(argv[i+1])
+    elif argv[i] == '-s':
+      const.SAMPLES = int(argv[i+1])
+    elif argv[i] == '-b':
+      const.BURN_IN = int(argv[i+1])
+    elif argv[i] == '-n':
+      const.NR_ITER = int(argv[i+1])
+    elif argv[i] == '-t':
+      const.NR_TOL = float(argv[i+1])
+    elif argv[i] == '-l':
+      const.NR_STEP = float(argv[i+1])
+    elif argv[i] == '-a':
+      const.ETA = float(argv[i+1])
     else:
-      print 'Usage: python -m algorithms.cap.prediction [-s <sample_size>] [-k <k>]'
+      print ('Usage: $ python -m algorithms.cap.prediction'
+          '[-k <latent_dimensions>] [-e <em_iterations>] [-s <samples>]'
+          '[-b <burn_in>] [-n <nr_iterations>] [-t <nr_tolerance>]'
+          '[-l <nr_learning_rate>] [-a <eta>]')
       exit()
     i = i + 2
 
@@ -97,38 +127,17 @@ def create_variable_groups():
   var_groups['v'].set_pair_name('u')
   return var_groups
 
-# TODO: put inside map features
-def map_features(votes, reviews, users, users_sim, users_conn, trusts):
-  global _AVG_USER
-  _AVG_USER = _AVG_USER if _AVG_USER else compute_avg_user(users)
-  global _AVG_SIM
-  _AVG_SIM = _AVG_SIM if _AVG_SIM else compute_avg_model(users_sim)
-  global _AVG_CONN
-  _AVG_CONN = _AVG_CONN if _AVG_CONN else compute_avg_model(users_conn)
-  features = {'review': [], 'author': [], 'voter': [], 'sim': [], 'conn': []}
-  for vote in votes:
-    r_id, a_id, v_id = vote['review'], vote['author'], vote['voter']
-    r_feat = map_review_features(reviews[r_id])
-    features['review'].append(r_feat)
-    author = users[a_id] if a_id in users else _AVG_USER
-    a_feat = map_author_features(author, _AVG_USER)
-    features['author'].append(a_feat)
-    voter = users[v_id] if v_id in users else _AVG_USER
-    v_feat = map_voter_features(voter, _AVG_USER)
-    features['voter'].append(v_feat)
-    if v_id in users and a_id in users[v_id]['similars']:
-      sim = users_sim[(a_id, v_id)] if (a_id, v_id) in users_sim else _AVG_SIM
-      sim_feat = map_users_sim_features(sim, _AVG_SIM)
-      features['sim'].append(sim_feat)
-    if v_id in trusts and a_id in trusts[v_id]:
-      conn = users_conn[(a_id, v_id)] if (a_id, v_id) in users_conn else \
-          _AVG_CONN
-      conn_feat = map_users_conn_features(conn, _AVG_CONN)
-      features['conn'].append(conn_feat)
-  return features
-
 
 def fit_cap_scaler(features):
+  """ Fit scaler for CAP, one per set of features.
+
+      Args:
+        features: dictionary of features indexed by entity name and containing a
+      list of feature arrays.
+
+      Returns:
+        A dictionary of scalers, indexed by entity name.
+  """
   scaler = {'review': None, 'author': None, 'voter': None, 'sim': None,
       'conn': None}
   scaler['review'] = fit_scaler('minmax', features['review']) 
@@ -142,6 +151,15 @@ def fit_cap_scaler(features):
 
 
 def scale_cap_features(scaler, features):
+  """ Scales features for CAP using previously fitted scaler.
+
+      Args:
+        scaler: dictionary of scalers, indexed by entity name.
+        features: dictionary of list of feature arrays, indexed by entity name.
+
+      Returns:
+        A new dictionary of features, in the same format but with scaled values.
+  """
   features['review'] = scale_features(scaler['review'], features['review'])
   features['author'] = scale_features(scaler['author'], features['author'])
   features['voter'] = scale_features(scaler['voter'], features['voter'])
@@ -158,14 +176,11 @@ def populate_variables(var_groups, train, users, trusts, features):
   
       Args:
         var_groups: a dictionary of Group objects indexed by group names.
-        reviews: dictionary of reviews' features indexed by id.
-        authors: dictionary of authors' features indexed by id.
-        votes: dictionary of votes' features indexed by id.
+        train: list of votes in training set.
+        users: dictionary o users. 
         trusts: networkx DiGraph with trust network. 
-        users_sim: dictionary of users similarity features indexed by a tuple
-          (author_id, voter_id).
-        users_conn: dictionary of users connection features indexed by a tuple
-          (author_id, voter_id).
+        features: dictionary of a list of feature arrays, indexed by entity or
+      interaction id and containing features for each vote in training.
 
       Returns:
         The same dictionary of Group objects with instances added.
@@ -173,24 +188,26 @@ def populate_variables(var_groups, train, users, trusts, features):
   sim_i = 0
   conn_i = 0
   for i, vote in enumerate(train):
-    # features are added in the same order of votes in train
+    # features are added in the same order of ids votes in train
     r_id, a_id, v_id = vote['review'], vote['author'], vote['voter']
-    var_groups['alpha'].add_instance(v_id, features['voter'][i])
-    var_groups['beta'].add_instance(r_id, features['review'][i]) 
-    var_groups['xi'].add_instance(a_id, features['author'][i])
-    var_groups['u'].add_instance(v_id, features['voter'][i]) 
-    var_groups['v'].add_instance(r_id, features['review'][i]) 
+    var_groups['alpha'].add_instance(v_id, features['voter'][i], train)
+    var_groups['beta'].add_instance(r_id, features['review'][i], train) 
+    var_groups['xi'].add_instance(a_id, features['author'][i], train)
+    var_groups['u'].add_instance(v_id, features['voter'][i], train) 
+    var_groups['v'].add_instance(r_id, features['review'][i], train) 
     if v_id in users and a_id in users[v_id]['similars']:
-      var_groups['gamma'].add_instance((a_id, v_id), features['sim'][sim_i])
+      var_groups['gamma'].add_instance((a_id, v_id), features['sim'][sim_i],
+          train)
       sim_i += 1
     if v_id in trusts and a_id in trusts[v_id]:
-      var_groups['lambda'].add_instance((a_id, v_id), features['conn'][conn_i])
+      var_groups['lambda'].add_instance((a_id, v_id), features['conn'][conn_i],
+          train)
       conn_i += 1
   return var_groups
 
 
-def calculate_predictions(groups, test, users, trusts, features):
-  """ Calculate the predictions after fitting values. If the vote to be
+def calculate_predictions(groups, test, users, trusts, features, sim, conn):
+  """ Calculates the predictions after fitting values. If the vote to be
       predicted contains entities modeled as latent variables (i.e., present
       on training set), the latent variable is used; otherwise, it is
       approximated by linear regression over features.
@@ -198,10 +215,12 @@ def calculate_predictions(groups, test, users, trusts, features):
       Args:
         groups: dictionary of Group objects.
         test: list of vote dictionaries on test set.
-        reviews: dictionary of review dictionaries.
         users: dictionary of user dictionaries.
-        users_sim: dictionary of similarity of users dictionaries.
-        users_conn: dictionary of connection of users dictionaries.
+        trusts: networkx DiGraph with trust network. 
+        features: dictionary of a list of feature arrays, indexed by entity or
+      interaction id and containing features for each vote in training.
+        sim: dictionary of similarity of users dictionaries.
+        conn: dictionary of connection of users dictionaries.
 
       Returns:
         A list of floats containing prediction values for each vote in test, in
@@ -233,7 +252,7 @@ def calculate_predictions(groups, test, users, trusts, features):
         .dot(a_feat)[0,0]
     a_id, v_id = vote['author'], vote['voter']
     gamma = 0.0
-    if v_id in users and a_id in users[v_id]['similars']:
+    if v_id in users and a_id in users[v_id]['similars'] and (a_id, v_id) in sim:
       sim_feat = features['sim'][sim_i]
       sim_feat = sim_feat.reshape((sim_feat.size, 1))
       gamma = groups['gamma'].get_instance(vote).value if \
@@ -241,7 +260,7 @@ def calculate_predictions(groups, test, users, trusts, features):
           groups['gamma'].weight_param.value.T.dot(sim_feat)[0,0]
       sim_i += 1
     lambd = 0.0
-    if v_id in trusts and a_id in trusts[v_id]:
+    if v_id in trusts and a_id in trusts[v_id] and (a_id, v_id) in conn:
       conn_feat = features['conn'][conn_i]
       conn_feat = conn_feat.reshape((conn_feat.size, 1))
       lambd = groups['lambda'].get_instance(vote).value if \
@@ -256,54 +275,52 @@ def calculate_predictions(groups, test, users, trusts, features):
 def run():
   load_args()
   
-  print 'Reading pickles'
-  reviews = load(open('%s/reviews%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  users = load(open('%s/users%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  train = load(open('%s/train%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  test = load(open('%s/test%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  val = load(open('%s/validation%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  trusts = load(open('%s/trusts%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  sim = load(open('%s/sim%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  conn = load(open('%s/conn%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
-  train_dict = {i:vote for i, vote in enumerate(train)}
+  for i in xrange(NUM_SETS):
+    print 'Reading data'
+    reviews = load(open('%s/reviews-%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
+    users = load(open('%s/users-%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
+    train = load(open('%s/train-%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
+    test = load(open('%s/test-%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
+    val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
+    trusts = load(open('%s/trusts.pkl' % _PKL_DIR, 'r'))
+    sim = load(open('%s/sim-%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
+    conn = load(open('%s/conn-%d.pkl' % (_PKL_DIR, _SAMPLE * 100), 'r'))
+    f_train = map_features(train, reviews, users, sim, conn, trusts)
+    f_val = map_features(val, reviews, users, sim, conn, trusts)
+    f_test = map_features(test, reviews, users, sim, conn, trusts)
+    for j in xrange(REP):
+      print 'Creating variables'
+     # scaler = fit_cap_scaler(f_train)
+     # f_train = scale_cap_features(scaler, f_train)
+      var_groups = create_variable_groups()
+      populate_variables(var_groups, train, users, trusts, f_train)
+      print 'Running EM'
+      expectation_maximization(var_groups, train)
+      print 'Calculating Predictions'
+      pred = calculate_predictions(var_groups, train, users, trusts, f_train, sim,
+          conn)
+      print 'TRAINING ERROR'
+      truth = [v['vote'] for v in train]
+      print '-- RMSE: %f' % calculate_rmse(pred, truth) 
+      print '-- nDCG@%d: %f' % (RANK_SIZE, calculate_avg_ndcg(train, reviews,
+          pred, truth, RANK_SIZE)
+      print 'Outputting Validation Prediction'
+     # f_val = scale_cap_features(scaler, f_val)
+      pred = calculate_predictions(var_groups, val, users, trusts, f_val, sim, conn)
+      output = open('%s/cap-%d-%d.dat' % (_VAL_DIR, i, j), 'w')
+      for p in pred:
+        print >> output, p
+      output.close()
+      print 'Outputting Test Prediction'
+     # f_test = scale_cap_features(scaler, f_test)
+      pred = calculate_predictions(var_groups, test, users, trusts, f_test, sim,
+          conn)
+      output = open('%s/cap-%d-%d.dat' % (_OUTPUT_DIR, i, j), 'w')
+      for p in pred:
+        print >> output, p
+      output.close()
+
   
-  print 'Creating variables'
-  f_train = map_features(train, reviews, users, sim, conn, trusts)
-  #scaler = fit_cap_scaler(f_train)
-  #f_train = scale_cap_features(scaler, f_train)
-  var_groups = create_variable_groups()
-  populate_variables(var_groups, train, users, trusts, f_train)
-  
-  print 'Running EM'
-  expectation_maximization(var_groups, train_dict)
-
-  print 'Calculating Predictions'
-  pred = calculate_predictions(var_groups, train, users, trusts, f_train)
-  print 'TRAINING ERROR'
-  truth = [v['vote'] for v in train]
-  rmse = calculate_rmse(pred, truth) 
-  print 'RMSE: %s' % rmse
-  for i in xrange(5, 21, 5):
-    score = calculate_ndcg(pred, truth, i)
-    print 'NDCG@%d: %f' % (i, score)
-
-  print 'Outputting Validation Prediction'
-  f_val = map_features(val, reviews, users, sim, conn, trusts)
-  #f_val = scale_cap_features(scaler, f_val)
-  pred = calculate_predictions(var_groups, val, users, trusts, f_val)
-  output = open('%s/cap%.2f.dat' % (_VAL_DIR, _SAMPLE * 100), 'w')
-  for p in pred:
-    print >> output, p
-  output.close()
-
-  print 'Outputting Test Prediction'
-  f_test = map_features(test, reviews, users, sim, conn, trusts)
-  #f_test = scale_cap_features(scaler, f_test)
-  pred = calculate_predictions(var_groups, test, users, trusts, f_test)
-  output = open('%s/cap%.2f.dat' % (_OUTPUT_DIR, _SAMPLE * 100), 'w')
-  for p in pred:
-    print >> output, p
-  output.close()
 
 
 if __name__ == '__main__':
