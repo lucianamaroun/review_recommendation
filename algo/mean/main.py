@@ -4,7 +4,7 @@
     Implements simple predictors using mean statistics from test set.
 
     Usage:
-      $ python -m methods.regression.prediction [-p <predictor>]
+      $ python -m algo.mean.main [-p <predictor>]
     where <predictor> is in the set [om, rm, am, vm]
 """
 
@@ -13,8 +13,8 @@ from sys import argv, exit
 
 from pickle import load
 
-from algorithms.const import NUM_SETS, RANK_SIZE
-from evaluation.metrics import calculate_rmse, calculate_ndcg
+from algo.const import NUM_SETS, RANK_SIZE
+from perf.metrics import calculate_rmse, calculate_ndcg
 
 
 _PREDICTORS = ['om', 'rm', 'am', 'vm']
@@ -38,8 +38,8 @@ def load_args():
       global _PRED 
       _PRED = argv[i+1]
     else:
-      print ('Usage: python -m methods.regression.prediction [-s <sample_size>]'
-          '[-p <predictor>], <predictor> is in the set [om, rm, am, vm]')
+      print ('Usage: python -m algo.mean.main [-p <predictor>], 
+          <predictor> is in the set [om, rm, am, vm]')
       exit()
     i = i + 2
 
@@ -206,27 +206,12 @@ def main():
     truth = [v['vote'] for v in train]
     print 'TRAINING ERROR'
     print '-- RMSE: %f' % calculate_rmse(pred, truth) 
-    pred_group = {}
-    truth_group = {}
-    for vote in train:
-      voter = vote['voter']
-      product = reviews[vote['review']]['product']
-      key = (voter, product)
-      if key not in pred_group:
-        pred_group[key] = []
-        truth_group[key] =[]
-      pred_group[key].append(pred[i])
-      truth_group[key].append(truth[i])
-    score_sum = 0.0
-    for key in pred_group:
-      score_sum += calculate_ndcg(pred_group[key], truth_group[key], RANK_SIZE)
-    score = score_sum / len(pred_group)
-    print '-- nDCG@%d: %f' % (RANK_SIZE, score)
+    print '-- nDCG@%d: %f' % (RANK_SIZE, calculate_avg_ndcg(train, reviews,
+        pred, truth, RANK_SIZE))
     output = open('%s/%s-%d-0.dat' % (_OUTPUT_DIR, _PRED, i), 'w')
     for v in test:
       print >> output, predictor(v)
     output.close()
-  
 
 
 if __name__ == '__main__':
