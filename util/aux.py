@@ -11,8 +11,11 @@
 from math import exp, sqrt
 from sys import float_info
 
-from numpy import zeros
+from numpy import zeros, nan, isnan
 from numpy.linalg import norm
+
+
+_LAMBDA = 100
 
 
 def cosine(vector_a, vector_b):
@@ -27,7 +30,7 @@ def cosine(vector_a, vector_b):
         A float with the cosine similarity value, in range [-1, 1].
   """
   if (vector_a.size != vector_b.size):
-    return float('nan')
+    return nan 
   if (vector_a.size == 0):
     return 0.0
   v_a = vector_a.reshape(vector_a.size)
@@ -60,6 +63,47 @@ def vectorize(dict_a, dict_b):
     vec_a[dim_index] = dict_a[dim_name] if dim_name in dict_a else 0
     vec_b[dim_index] = dict_b[dim_name] if dim_name in dict_b else 0
   return vec_a, vec_b
+
+
+def shrunk_cosine(votes_a, votes_b):
+  """ Calculates cosine similarity between two dictionary of votes. First,
+      ratings are projected to vectors in the space of intersection of voted
+      objects. Then, cosine is calculated with shrunking, where the lenght of
+      each vector is the length of evaluation intersection.
+      
+      Args:
+        votes_a: dictionary of votes of entity a, indexed by voted object id.
+        votes_b: dictionary of votes of entity b, indexed by voted object id.
+
+      Returns:
+        A float with cosine similarity.
+  """
+  a_vec, b_vec = vectorize(votes_a, votes_b)
+  cos = cosine(a_vec, b_vec)
+  if isnan(cos):
+    return 0.0
+  return a_vec.size / (a_vec.size + _LAMBDA) * cosine(a_vec, b_vec)
+
+
+def shrunk_pearson(votes_a, votes_b):
+  """ Calculates Pearson similarity between two dictionary of votes. First,
+      ratings are projected to vectors in the space of intersection of voted
+      objects. Then, Pearson is calculated with shrunking, where the lenght of
+      each vector is the length of evalation intersection.
+      
+      Args:
+        votes_a: dictionary of votes of entity a, indexed by voted object id.
+        votes_b: dictionary of votes of entity b, indexed by voted object id.
+
+      Returns:
+        A float with cosine similarity.
+  """
+  a_vec, b_vec = vectorize(votes_a, votes_b)
+  pear = pearsonr(a_vec, b_vec)[0]
+  if isnan(pear):
+    return 0.0
+  return a_vec.size / (a_vec.size + _LAMBDA) * pear
+
 
 def sigmoid(value):
   """ Computes the sigmoid function applied to value. The function corresponds

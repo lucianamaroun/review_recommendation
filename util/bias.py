@@ -17,7 +17,7 @@ from numpy import nan, isnan
 from numpy.random import random
 from pickle import load
 
-from evaluation.metrics import calculate_rmse, calculate_ndcg
+from perf.metrics import calculate_rmse, calculate_ndcg
 
 
 _ITER = 1000      # number of iterations of stochastic gradient descent
@@ -27,6 +27,7 @@ _SAMPLE = 0.001
 _TOL = 1e-6
 _PKL_DIR = 'out/pkl'
 _OUTPUT_DIR = 'out/pred'
+
 
 class BiasModel(object):
   """ Class implementing a Bias Baseline Model. """
