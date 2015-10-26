@@ -14,7 +14,7 @@ from numpy import testing as ntest
 from numpy.linalg import pinv, lstsq
 from random import random
 
-from algorithms.cap import models, const
+from algo.cap import models, const
 from util import aux
 
 
@@ -160,20 +160,20 @@ class SmallScenarioTestCase(TestCase):
       ('a2', 'v7'): array([0.5, 0.32, 0.6, 0.4]),
       ('a3', 'v5'): array([0.3, 0.2, 0.12, 0.19])
     }
-    self.votes = {
-        1: {'review': 'r1', 'author': 'a1', 'voter': 'v1', 'vote': 4},
-        2: {'review': 'r1', 'author': 'a1', 'voter': 'v2', 'vote': 2},
-        3: {'review': 'r1', 'author': 'a1', 'voter': 'v3', 'vote': 3},
-        4: {'review': 'r2', 'author': 'a1', 'voter': 'v1', 'vote': 5},
-        5: {'review': 'r2', 'author': 'a1', 'voter': 'v4', 'vote': 5},
-        6: {'review': 'r3', 'author': 'a2', 'voter': 'v5', 'vote': 3},
-        7: {'review': 'r4', 'author': 'a2', 'voter': 'v6', 'vote': 5},
-        8: {'review': 'r4', 'author': 'a2', 'voter': 'v7', 'vote': 4},
-        9: {'review': 'r4', 'author': 'a2', 'voter': 'v3', 'vote': 4},
-        10: {'review': 'r5', 'author': 'a3', 'voter': 'v1', 'vote': 5},
-        11: {'review': 'r5', 'author': 'a3', 'voter': 'v4', 'vote': 5},
-        12: {'review': 'r5', 'author': 'a3', 'voter': 'v5', 'vote': 1}
-    }
+    self.votes = [
+        {'review': 'r1', 'author': 'a1', 'voter': 'v1', 'vote': 4},
+        {'review': 'r1', 'author': 'a1', 'voter': 'v2', 'vote': 2},
+        {'review': 'r1', 'author': 'a1', 'voter': 'v3', 'vote': 3},
+        {'review': 'r2', 'author': 'a1', 'voter': 'v1', 'vote': 5},
+        {'review': 'r2', 'author': 'a1', 'voter': 'v4', 'vote': 5},
+        {'review': 'r3', 'author': 'a2', 'voter': 'v5', 'vote': 3},
+        {'review': 'r4', 'author': 'a2', 'voter': 'v6', 'vote': 5},
+        {'review': 'r4', 'author': 'a2', 'voter': 'v7', 'vote': 4},
+        {'review': 'r4', 'author': 'a2', 'voter': 'v3', 'vote': 4},
+        {'review': 'r5', 'author': 'a3', 'voter': 'v1', 'vote': 5},
+        {'review': 'r5', 'author': 'a3', 'voter': 'v4', 'vote': 5},
+        {'review': 'r5', 'author': 'a3', 'voter': 'v5', 'vote': 1}
+    ]
     self.groups = {}
     self.var_H = models.PredictionVarianceParameter('var_H')
     self._create_groups()
@@ -186,41 +186,41 @@ class SmallScenarioTestCase(TestCase):
         models.ScalarVarianceParameter('var_alpha'),
         self.var_H)
     for e_id, e_feat in self.voters.iteritems():
-      self.groups['alpha'].add_instance(e_id, e_feat)
+      self.groups['alpha'].add_instance(e_id, e_feat, self.votes)
     self.groups['beta'] = models.EntityScalarGroup('beta', 'review',
         models.EntityScalarParameter('g', (17,1)),
         models.ScalarVarianceParameter('var_beta'),
         self.var_H)
     for e_id, e_feat in self.reviews.iteritems():
-      self.groups['beta'].add_instance(e_id, e_feat)
+      self.groups['beta'].add_instance(e_id, e_feat, self.votes)
     self.groups['xi'] = models.EntityScalarGroup('xi', 'author',
         models.EntityScalarParameter('b', (5,1)),
         models.ScalarVarianceParameter('var_xi'),
         self.var_H)
     for e_id, e_feat in self.authors.iteritems():
-      self.groups['xi'].add_instance(e_id, e_feat)
+      self.groups['xi'].add_instance(e_id, e_feat, self.votes)
     self.groups['u'] = models.EntityArrayGroup('u', (const.K, 1), 'voter',
         models.EntityArrayParameter('W', (const.K, 9)),
         models.ArrayVarianceParameter('var_u'),
         self.var_H)
     for e_id, e_feat in self.voters.iteritems():
-      self.groups['u'].add_instance(e_id, e_feat)
+      self.groups['u'].add_instance(e_id, e_feat, self.votes)
     self.groups['v'] = models.EntityArrayGroup('v', (const.K, 1), 'review',
         models.EntityArrayParameter('V', (const.K, 17)),
         models.ArrayVarianceParameter('var_v'),
         self.var_H)
     for e_id, e_feat in self.reviews.iteritems():
-      self.groups['v'].add_instance(e_id, e_feat)
+      self.groups['v'].add_instance(e_id, e_feat, self.votes)
     self.groups['gamma'] = models.InteractionScalarGroup('gamma', ('author', 
         'voter'), models.InteractionScalarParameter('r', (7, 1)), 
         models.ScalarVarianceParameter('var_gamma'), self.var_H)
     for e_id, e_feat in self.sim.iteritems():
-      self.groups['gamma'].add_instance(e_id, e_feat)
+      self.groups['gamma'].add_instance(e_id, e_feat, self.votes)
     self.groups['lambda'] = models.InteractionScalarGroup('lambda', ('author',
         'voter'), models.InteractionScalarParameter('h', (4, 1)),
         models.ScalarVarianceParameter('var_lambda'), self.var_H)
     for e_id, e_feat in self.conn.iteritems():
-      self.groups['lambda'].add_instance(e_id, e_feat)
+      self.groups['lambda'].add_instance(e_id, e_feat, self.votes)
 
 
   def test_alpha_group_creation(self):
@@ -329,11 +329,11 @@ class SmallScenarioTestCase(TestCase):
     for g_id, group in self.groups.iteritems():
       for variable in group.iter_variables():
         if type(variable.e_type) is tuple:
-          vote = [v for v in self.votes.itervalues() if v[variable.e_type[0]] ==
+          vote = [v for v in self.votes if v[variable.e_type[0]] ==
               variable.entity_id[0] and v[variable.e_type[1]] ==
               variable.entity_id[1]][0]
         else:
-          vote = [v for v in self.votes.itervalues() if v[variable.e_type] ==
+          vote = [v for v in self.votes if v[variable.e_type] ==
               variable.entity_id][0]
         if isinstance(variable, models.ScalarVariable):
           self.assertEqual(group.get_instance(vote).get_last_sample(),
@@ -356,7 +356,7 @@ class SmallScenarioTestCase(TestCase):
     groups = self.groups
     variable = [v for v in groups['alpha'].iter_variables() if v.entity_id
         == 'v1' ][0]
-    vote = self.votes.itervalues().next()
+    vote = self.votes[0]
     rest = vote['vote'] - \
       [v for v in groups['beta'].iter_variables() if v.entity_id == 'r1'][0].value - \
       [v for v in groups['xi'].iter_variables() if v.entity_id == 'a1'][0].value - \
@@ -370,7 +370,7 @@ class SmallScenarioTestCase(TestCase):
     groups = self.groups
     variable = [v for v in groups['u'].iter_variables() if v.entity_id
         == 'v1' ][0]
-    vote = self.votes.itervalues().next()
+    vote = self.votes[0]
     rest = vote['vote'] - \
       [v for v in groups['alpha'].iter_variables() if v.entity_id == 'v1'][0].value - \
       [v for v in groups['beta'].iter_variables() if v.entity_id == 'r1'][0].value - \

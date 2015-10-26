@@ -19,7 +19,6 @@ from textblob import TextBlob
 from nltk.tokenize import word_tokenize, sent_tokenize, RegexpTokenizer
 from nltk import pos_tag
 from nltk.corpus import wordnet
-from pymongo import MongoClient
 from numpy import nan, isnan, mean
 
 from preprocessing.parsing import parse_reviews
@@ -41,10 +40,6 @@ _SUBSTITUTE = {
 _PUNCTUATION = set(['!', '?', ':', ';', ',', '.']) 
     # source: http://www.nltk.org/api/nltk.tokenize.html
 _SYMBOLS = punctuation
-
-if _USE_DB:
-  client = MongoClient('mongodb://localhost:27017/')
-  reviews_db = client.review_rec.reviews
 _SWN = SimplifiedSentiWordNet()
 
 

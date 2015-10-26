@@ -76,22 +76,24 @@ def get_top_k_relevance(pred, truth, k):
 
       Args:
         pred: list of floats with predicted relevances.
-      truth: list of floats (or integers) with true relevances.
+        truth: list of floats (or integers) with true relevances.
         k: integer with the size of ranking to consider.
 
       Returns:
         A list with the k values with true relevances sorted by predicted
       relevances.
   """
-  pred = pred[:]
   top = []
   for i in xrange(k):
+    if len(pred) == 0:
+      continue
     best = 0
     for j in xrange(1, len(pred)):
       if pred[j] > pred[best]:
         best = j
     top.append(truth[best])
-    pred[best] = -float('inf')
+    pred = pred[:best] + pred[best+1:]
+    truth = truth[:best] + truth[best+1:]
   return top
 
 
@@ -135,7 +137,7 @@ def calculate_ndcg(pred, truth, k):
   curr_dcg = calculate_dcg(pred, truth, k)
   best_dcg = calculate_dcg(truth, truth, k)
   return curr_dcg / best_dcg if best_dcg != 0.0 else 0.0 
-      # zero-relevance on top is bad, being conservative
+      # zero-relevance on top is bad (conservative)
 
 def calculate_avg_ndcg(votes, reviews, pred, truth, k):
   """ Calculates the average nDCG by grouping votes in (user, product) pairs in

@@ -1,24 +1,26 @@
-""" Test of EM
+''' Test of EM
     ----------
 
     Test updates and convergence of EM process. 
 
     Usage:
-    $ python -m cap.test_em
-"""
+    $ python -m test.test_cap_em
+'''
 
 
 from unittest import TestCase, main
 from numpy import array, identity, absolute
 from numpy.linalg import det, pinv
+from numpy.testing import assert_allclose
 from math import log
 
-from algorithms.cap import models, const, em
+from algo.cap import models, const, em
+from algo.cap.newton_raphson import newton_raphson 
 from util import aux
 
 
 def likelihood(groups, votes):
-  """ Gets the log-likelihood of the current set of variables and parameters.
+  ''' Gets the log-likelihood of the current set of variables and parameters.
 
       Observation: Auxiliary function for testing.
 
@@ -28,7 +30,7 @@ def likelihood(groups, votes):
 
       Returns:
         A flot with the log-likelihood value.
-  """
+  '''
   likelihood = 0
   var_H = groups.itervalues().next().var_H.value
   for vote in votes:
@@ -67,7 +69,7 @@ def likelihood(groups, votes):
     
 
 class TinyScenarioTestCase(TestCase):
-  """ Test case for a tiny scenario of EM. """
+  ''' Test case for a tiny scenario of EM. '''
 
   def setUp(self):
     self.reviews = {
@@ -97,7 +99,6 @@ class TinyScenarioTestCase(TestCase):
     self.d_groups = {} 
     self.d_vars = {}
     self.d_params = {}
-    self.votes_dict = {i:v for i,v in enumerate(self.votes)}
     self._create_groups()
   
   def _create_groups(self):
@@ -106,41 +107,41 @@ class TinyScenarioTestCase(TestCase):
         models.ScalarVarianceParameter('var_alpha'),
         self.var_H)
     for e_id, e_feat in self.voters.iteritems():
-      self.groups['alpha'].add_instance(e_id, e_feat)
+      self.groups['alpha'].add_instance(e_id, e_feat, self.votes)
     self.groups['beta'] = models.EntityScalarGroup('beta', 'review',
         models.EntityScalarParameter('g', (17,1)),
         models.ScalarVarianceParameter('var_beta'),
         self.var_H)
     for e_id, e_feat in self.reviews.iteritems():
-      self.groups['beta'].add_instance(e_id, e_feat)
+      self.groups['beta'].add_instance(e_id, e_feat, self.votes)
     self.groups['xi'] = models.EntityScalarGroup('xi', 'author',
         models.EntityScalarParameter('b', (5,1)),
         models.ScalarVarianceParameter('var_xi'),
         self.var_H)
     for e_id, e_feat in self.authors.iteritems():
-      self.groups['xi'].add_instance(e_id, e_feat)
+      self.groups['xi'].add_instance(e_id, e_feat, self.votes)
     self.groups['u'] = models.EntityArrayGroup('u', (const.K, 1), 'voter',
         models.EntityArrayParameter('W', (const.K, 9)),
         models.ArrayVarianceParameter('var_u'),
         self.var_H)
     for e_id, e_feat in self.voters.iteritems():
-      self.groups['u'].add_instance(e_id, e_feat)
+      self.groups['u'].add_instance(e_id, e_feat, self.votes)
     self.groups['v'] = models.EntityArrayGroup('v', (const.K, 1), 'review',
         models.EntityArrayParameter('V', (const.K,17)),
         models.ArrayVarianceParameter('var_v'),
         self.var_H)
     for e_id, e_feat in self.reviews.iteritems():
-      self.groups['v'].add_instance(e_id, e_feat)
+      self.groups['v'].add_instance(e_id, e_feat, self.votes)
     self.groups['gamma'] = models.InteractionScalarGroup('gamma', ('author', 
         'voter'), models.InteractionScalarParameter('r', (7, 1)), 
         models.ScalarVarianceParameter('var_gamma'), self.var_H)
     for e_id, e_feat in self.sim.iteritems():
-      self.groups['gamma'].add_instance(e_id, e_feat)
+      self.groups['gamma'].add_instance(e_id, e_feat, self.votes)
     self.groups['lambda'] = models.InteractionScalarGroup('lambda', ('author',
         'voter'), models.InteractionScalarParameter('h', (4,1)),
         models.ScalarVarianceParameter('var_lambda'), self.var_H)
     for e_id, e_feat in self.conn.iteritems():
-      self.groups['lambda'].add_instance(e_id, e_feat)
+      self.groups['lambda'].add_instance(e_id, e_feat, self.votes)
     self.groups['u'].set_pair_name('v')
     self.groups['v'].set_pair_name('u')
     for g_id, group in self.groups.iteritems():
@@ -156,12 +157,12 @@ class TinyScenarioTestCase(TestCase):
       for variable in group.iter_variables():
         d_var = {}
         if isinstance(variable, models.InteractionScalarVariable):
-          d_var['related_votes'] = [_id for _id in self.votes_dict if \
-            self.votes_dict[_id][variable.e_type[0]] == variable.entity_id[0] and \
-            self.votes_dict[_id][variable.e_type[1]] == variable.entity_id[1]]
+          d_var['related_votes'] = [i for i, v in enumerate(self.votes) if \
+            v[variable.e_type[0]] == variable.entity_id[0] and \
+            v[variable.e_type[1]] == variable.entity_id[1]]
         else:
-          d_var['related_votes'] = [_id for _id in self.votes_dict if \
-            self.votes_dict[_id][variable.e_type] == variable.entity_id]
+          d_var['related_votes'] = [i for i, v in enumerate(self.votes) if \
+            v[variable.e_type] == variable.entity_id]
         d_var['entity_id'] = variable.entity_id
         d_var['num_votes'] = len(d_var['related_votes'])
         if isinstance(variable, models.ScalarVariable):
@@ -301,7 +302,7 @@ class TinyScenarioTestCase(TestCase):
     var = self.groups['alpha'].iter_variables().next()
     var.cond_var = None
     var.var_dot = None
-    mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes_dict)
+    mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes)
     variance = 1.0 / (2.0 / self.groups['alpha'].var_H.value +
         1.0 / self.groups['alpha'].var_param.value)
     mean = variance * ((var.get_rest_value(self.groups, self.votes[0]) + \
@@ -323,7 +324,7 @@ class TinyScenarioTestCase(TestCase):
       var = iterator.next()
       var.cond_var = None
       var.var_dot = None
-      mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes_dict)
+      mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes)
       variance = 1.0 / (1.0 / self.groups['beta'].var_H.value +
           1.0 / self.groups['beta'].var_param.value)
       mean = variance * (var.get_rest_value(self.groups, vote) / \
@@ -341,7 +342,7 @@ class TinyScenarioTestCase(TestCase):
     var = self.groups['xi'].iter_variables().next()
     var.cond_var = None
     var.var_dot = None
-    mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes_dict)
+    mean_res, var_res = var.get_cond_mean_and_var(self.groups, self.votes)
     variance = 1.0 / (2.0 / self.groups['xi'].var_H.value +
         1.0 / self.groups['xi'].var_param.value)
     mean = variance * ((var.get_rest_value(self.groups, self.votes[0]) + \
@@ -355,10 +356,10 @@ class TinyScenarioTestCase(TestCase):
     self.assertGreaterEqual(likelihood(self.groups, self.votes), prev_lkl)
 
   def test_e_step(self):
-    """ Because of Gibbs Sampling, there is no guarantee that EM iterations will
+    ''' Because of Gibbs Sampling, there is no guarantee that EM iterations will
         always improve the likelihood. But we assume that the first iteration
         will in most cases.
-    """
+    '''
     for _ in xrange(2):
       vote = self.votes[0]
       beta_0 = self.groups['beta'].get_instance(vote).value
@@ -376,7 +377,7 @@ class TinyScenarioTestCase(TestCase):
           self.groups['lambda'].iter_variables().next().value + \
           self.groups['u'].iter_variables().next().value.T \
           .dot(self.groups['v'].get_instance(vote).value)[0,0]
-      em.perform_e_step(self.groups, self.votes_dict, 10, 0)
+      em.perform_e_step(self.groups, self.votes, 10, 0)
       pred_0 = self.groups['beta'].get_instance(vote).value + \
           self.groups['alpha'].iter_variables().next().value + \
           self.groups['xi'].iter_variables().next().value + \
@@ -410,7 +411,7 @@ class TinyScenarioTestCase(TestCase):
       h_0 = self.groups['lambda'].weight_param.value
       W_0 = self.groups['u'].weight_param.value
       V_0 = self.groups['v'].weight_param.value
-      em.perform_m_step(self.groups, self.votes_dict)
+      em.perform_m_step(self.groups, self.votes)
       g_n = self.groups['beta'].weight_param.value
       d_n = self.groups['alpha'].weight_param.value
       b_n = self.groups['xi'].weight_param.value
@@ -421,9 +422,9 @@ class TinyScenarioTestCase(TestCase):
      # print beta.value, g_0.T.dot(beta.features)[0,0], g_n.T.dot(beta.features)[0,0]
      # print alpha.value, d_0.T.dot(alpha.features)[0,0], d_n.T.dot(alpha.features)[0,0]
      # print xi.value, b_0.T.dot(xi.features)[0,0], b_n.T.dot(xi.features)[0,0]
-     # print gamma.value, r_0.T.dot(gamma.features)[0,0], \
+     # print gamma.value, aux.sigmoid(r_0.T.dot(gamma.features)[0,0]), \
      #     aux.sigmoid(r_n.T.dot(gamma.features)[0,0])
-     # print lambd.value, h_0.T.dot(lambd.features)[0,0], \
+     # print lambd.value, aux.sigmoid(h_0.T.dot(lambd.features)[0,0]), \
      #     aux.sigmoid(h_n.T.dot(lambd.features)[0,0])
      # print u.value
      # print W_0.dot(u.features)
@@ -453,6 +454,37 @@ class TinyScenarioTestCase(TestCase):
       self.assertGreaterEqual(sum(absolute(v.value - V_0.dot(v.features))), \
           sum(absolute(v.value - V_n.dot(v.features))))
 
+  def test_interaction_optimize(self):
+   # print 'Interaction Optimize'
+    for i in xrange(5):
+      em.perform_e_step(self.groups, self.votes, 10, 0)
+      old_likel = likelihood(self.groups, self.votes)
+     # print 'old %f' % old_likel
+      gamma = self.groups['gamma']
+      param = gamma.weight_param
+     # for variable in gamma.iter_variables():
+     #   print variable.value, aux.sigmoid(param.value.T.dot(variable.features)[0,0])
+      param.optimize(gamma)
+     # print '-'
+     # for variable in gamma.iter_variables():
+     # print variable.value, aux.sigmoid(param.value.T.dot(variable.features)[0,0])
+     # print 'new %f' % likelihood(self.groups, self.votes) 
+      self.assertGreaterEqual(round(likelihood(self.groups, self.votes), 2), 
+        round(old_likel, 2))
+     # print ''
+      em.perform_m_step(self.groups, self.votes)
+   # print '------'
+
+  def test_newton_raphson(self):
+    f = lambda x, y: array([x[0] + x[1] - 2, x[0] - x[1] - 1])
+    der_f = lambda x, y: array([[1, 1], [1, -1]])
+    assert_allclose(array([1.5, 0.5]), newton_raphson(f, der_f, None,
+        array([1.0, 1e-8]), n_iter=20, eps=0.000001, step=1))
+   # f = lambda x, y: (x[0] + x[1] - 1) * (x[0] - x[1] - 2)
+    der_f = lambda x, y: array([2*x[0]-3, -2*x[1]-1])
+    der2_f = lambda x, y: array([[2, 0], [0, -2]])
+    assert_allclose(array([1.5, -0.5]), newton_raphson(der_f, der2_f, None,
+        array([1.0, 1e-8]), n_iter=20, eps=0.000001, step=1))
 
 if __name__ == '__main__':
   main()
