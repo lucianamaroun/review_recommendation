@@ -67,19 +67,11 @@ def fit_scaler_by_query(scale_type, data, qid, qid_dep_size):
   data = array(data)
   dim = data.shape[1]
   q_undep, q_dep = hsplit(data, [dim-qid_dep_size])
-  q_scalers = {}
   if scale_type == 'standard':
     overall_scaler = StandardScaler(copy=False).fit(q_undep)
-    for q in qid_grouped: 
-      q_scalers[q] = StandardScaler(copy=False).fit(qid_grouped[q])
   if scale_type == 'minmax':
     overall_scaler = MinMaxScaler(copy=False).fit(q_undep)
-    qid_grouped = group_by_qid(q_dep, qid)
-    for q in qid_grouped: 
-      if len(qid_grouped[q]) > 50:
-        q_scalers[q] = MinMaxScaler(copy=False).fit(qid_grouped[q])
-    q_scalers['all'] = MinMaxScaler(copy=False).fit(q_dep)
-  return overall_scaler, q_scalers
+  return overall_scaler
 
 
 def scale_features(scaler, data, qid=None, qid_dep_size=None):
@@ -102,19 +94,15 @@ def scale_features(scaler, data, qid=None, qid_dep_size=None):
     data = scaler.transform(data)
   else:
     dim = data.shape[1]
-    #overall_scaler = scaler 
-    overall_scaler, q_scalers = scaler
+    overall_scaler = scaler 
     q_undep, q_dep = hsplit(data, [dim-qid_dep_size])
     q_undep = overall_scaler.transform(q_undep)
-#    qid_grouped = group_by_qid(q_dep, qid)
-#    q_scalers = {}
-#    for q in qid_grouped: 
-#      q_scalers[q] = MinMaxScaler(copy=False).fit(qid_grouped[q])
+    qid_grouped = group_by_qid(q_dep, qid)
+    q_scalers = {}
+    for q in qid_grouped: 
+      q_scalers[q] = MinMaxScaler(copy=False).fit(qid_grouped[q])
     for i in xrange(q_dep.shape[0]):
-      if qid[i] in q_scalers:
-        q_dep[i] = q_scalers[qid[i]].transform([q_dep[i]]) # assignments necessary?
-      else:
-        q_dep[i] = q_scalers['all'].transform([q_dep[i]])
+      q_dep[i] = q_scalers[qid[i]].transform([q_dep[i]])
     data = hstack((q_undep, q_dep))
   return data 
 
