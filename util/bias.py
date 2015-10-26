@@ -41,11 +41,12 @@ class BiasModel(object):
         Returns:
           None.
     """
-    self.item_bias = None
-    self.user_bias = None
+    self.product_bias = None
+    self.author_bias = None
+    self.voter_bias = None
     self.overall_mean = None
 
-  def _initialize(self, votes):
+  def _initialize(self, votes, reviews):
     """ Initializes bias values for each entity and calculates overall average.
 
         Observation:
@@ -54,14 +55,17 @@ class BiasModel(object):
 
         Args:
           votes: list of votes (training set).
+          reviews: dictionary of reviews, to obtain product.
         
         Returns:
           None. Instance fields are updated.
     """
-    self.user_bias = {}
-    user_count = {}
-    self.item_bias = {}
-    item_count = {}
+    self.voter_bias = {}
+    voter_count = {}
+    self.author_bias = {}
+    author_count = {}
+    self.product_bias = {}
+    product_count = {}
     self.overall_mean = 0
     count = 0
     for vote in votes:
@@ -69,122 +73,131 @@ class BiasModel(object):
       count += 1
     self.overall_mean /= float(count)
     for vote in votes:
-      user = vote['voter']
-      if user not in self.user_bias:
-        self.user_bias[user] = 0
-        user_count[user] = 0
-      self.user_bias[user] += (vote['vote'] - self.overall_mean)
-      user_count[user] += 1
-    for user in self.user_bias:
-      self.user_bias[user] /= float(user_count[user])
+      voter = vote['voter']
+      if voter not in self.voter_bias:
+        self.voter_bias[voter] = 0
+        voter_count[voter] = 0
+      self.voter_bias[voter] += (vote['vote'] - self.overall_mean)
+      voter_count[voter] += 1
+    for voter in self.voter_bias:
+      self.voter_bias[voter] /= float(voter_count[voter])
     for vote in votes:
-      user = vote['voter']
-      item = vote['review']
-      if item not in self.item_bias:
-        self.item_bias[item] = 0
-        item_count[item] = 0
-      self.item_bias[item] += (vote['vote'] - self.overall_mean -
-          self.user_bias[user]) 
-      item_count[item] += 1
-    for item in self.item_bias:
-      self.item_bias[item] /= float(item_count[item])
+      voter = vote['voter']
+      author = vote['author']
+      if author not in self.author_bias:
+        self.author_bias[author] = 0
+        author_count[author] = 0
+      self.author_bias[author] += (vote['vote'] - self.overall_mean -
+          self.voter_bias[voter]) 
+      author_count[author] += 1
+    for author in self.author_bias:
+      self.author_bias[author] /= float(author_count[author])
+    for vote in votes:
+      voter = vote['voter']
+      author = vote['author']
+      product = reviews[vote['review']]['product']
+      if product not in self.product_bias:
+        self.product_bias[product] = 0
+        product_count[product] = 0
+      self.product_bias[product] += (vote['vote'] - self.overall_mean -
+          self.voter_bias[voter] - self.author_bias[author]) 
+      product_count[product] += 1
+    for product in self.product_bias:
+      self.product_bias[product] /= float(product_count[product])
     
-  def fit(self, votes):
+  def fit(self, votes, reviews):
     """ Fits a Bias Baseline model given training set (votes).
 
         Args:
           vote: list of votes, represented as dictionaries (training set).
+          reviews: dictionary of reviews.
         
         Returns:
           None. Instance fields are updated.
     """
-    self._initialize(votes)
+    self._initialize(votes, reviews)
     previous = float('inf')
     for _ in xrange(_ITER):
       for vote in votes:
-        u = vote['voter']
-        i = vote['review']
-        pred = self.overall_mean + self.user_bias[u] + self.item_bias[i]
-        error = float(vote['vote']) - pred 
-        self.user_bias[u] += _ALPHA * 2 * (error - _BETA * self.user_bias[u])
-        self.item_bias[i] += _ALPHA * 2 * (error - _BETA * self.item_bias[i])
+        voter = vote['voter']
+        author = vote['author']
+        product = reviews[vote['review']]['product']
+        pred = self.overall_mean + self.voter_bias[voter] + \
+            self.author_bias[author] + self.product_bias[product]
+        error = pred - float(vote['vote']) 
+        # one does not depend on the other: no need for temporary variables
+        self.voter_bias[voter] -= _ALPHA * 2 * (error + _BETA *
+            self.voter_bias[voter])
+        self.author_bias[author] -= _ALPHA * 2 * (error + _BETA * \
+            self.author_bias[author])
+        self.product_bias[product] -= _ALPHA * 2 * (error + _BETA * \
+            self.product_bias[product])
       value = 0.0
       for vote in votes:
-        u = vote['voter']
-        i = vote['review']
-        pred = self.overall_mean + self.user_bias[u] + self.item_bias[i]
+        voter = vote['voter']
+        author = vote['author']
+        product = reviews[vote['review']]['product']
+        pred = self.overall_mean + self.voter_bias[voter] + \
+            self.author_bias[author] + self.product_bias[product]
         value += (vote['vote'] - pred) ** 2
-      for u in self.user_bias:
-        value += self.user_bias[u] ** 2
-      for i in self.item_bias:
-        value += self.item_bias[i] ** 2
+      for voter in self.voter_bias:
+        value += self.voter_bias[voter] ** 2
+      for author in self.author_bias:
+        value += self.author_bias[author] ** 2
+      for product in self.product_bias:
+        value += self.product_bias[product] ** 2
       if abs(previous - value) < _TOL:
         print 'Convergence'
         break
       previous = value
 
-  def fit_transform(self, votes):
+  def fit_transform(self, votes, reviews):
     """ Fits Bias Model on data and adjust vote values to contain only unbiased
         value.
 
         Args:
           votes: list of votes to learn model and transform values.
+          reviews: dictionary of reviews.
 
         Returns:
           None. Changes are made in place.
     """
-    self.fit(votes)
-    return self.transform(votes)
+    self.fit(votes, reviews)
+    return self.transform(votes, reviews)
 
-  def predict(self, votes):
+  def predict(self, votes, reviews):
     """ Predicts a set of vote examples using previous fitted model.
 
         Args:
           votes: list of dictionaries, representing votes, to predict
         helpfulness vote value.
+          reviews: dictionary of reviews.
 
         Returns:
           A list of floats with predicted vote values.
     """
     pred = []
     for vote in votes:
-      u = vote['voter']
-      i = vote['review']
-      if u in self.user_bias and i in self.item_bias:
-        dot = self.overall_mean + self.user_bias[u] + self.item_bias[i] 
-        pred.append(dot)
-      else:
-        pred.append(nan)
+      voter = vote['voter']
+      author = vote['author']
+      product = reviews[vote['review']]['product'] 
+      value = self.overall_mean
+      if voter in self.voter_bias: # if no bias, we assume 0
+        dot += self.voter_bias[voter]
+      if author in self.author_bias:
+        dot += self.author_bias[author]
+      if product in self.product_bias:
+        dot += self.product_bias[product]
+      pred.append(value)
     return pred
 
-  def get_user_bias(self, user):
-    """ Gets a bias regarding a user on a fitted bias model.
-
-        Args:
-          user: the id of the user.
-
-        Returns:
-          A float with user bias, in warm-start case, or nan, in cold-start.
-    """
-    return self.user_bias[user] if user in self.user_bias else nan
-  
-  def get_item_bias(self, item):
-    """ Gets a bias regarding an item on a fitted bias model.
-
-        Args:
-          item: the id of the item.
-
-        Returns:
-          A float with item bias, in warm-start case, or nan, in cold-start.
-    """
-    return self.item_bias[item] if item in self.item_bias else nan
- 
-  def transform(self, votes):
+  def transform(self, votes, reviews):
     """ Removes bias values and overall mean from votes.
 
         Args:
           votes: list of votes to remove bias; it should be the same list
         fitted, because all entities have to have a bias associated.
+          reviews: dictionary of reviews.
 
         Returns:
           A new list of votes with unbiased values. 
@@ -192,33 +205,38 @@ class BiasModel(object):
     new_votes = []
     for vote in votes:
       new_vote = vote.copy()
-      u = vote['voter']
-      i = vote['review']
-      new_vote['vote'] -= self.overall_mean + self.user_bias[u] + \
-          self.item_bias[i]
+      voter = vote['voter']
+      author = vote['author']
+      product = reviews[vote['review']]['product']
+      new_vote['vote'] -= self.overall_mean + self.voter_bias[voter] + \
+          self.author_bias[author] + self.product_bias[product]
       new_votes.append(new_vote) 
     return new_votes
 
-  def add_bias(self, votes, pred):
+  def add_bias(self, votes, reviews, pred):
     """ Removes bias values and overall mean from votes.
 
         Args:
           votes: votes whose values are being predicted.
+          reviews: dictionary of reviews.
           pred: unbiased estimates of votes.
 
         Returns:
           None. The pred list is changed in place.
     """
     for index, vote in enumerate(votes):
-      u = vote['voter']
-      i = vote['review']
+      voter = vote['voter']
+      author = vote['author']
+      product = reviews[vote['review']]['product']
       if isnan(pred[index]):
         continue
       pred[index] += self.overall_mean
-      if u in self.user_bias:
-        pred[index] += self.user_bias[u]
-      if i in self.item_bias:
-        pred[index] += self.item_bias[i]
+      if voter in self.voter_bias:
+        pred[index] += self.voter_bias[voter]
+      if author in self.author_bias:
+        pred[index] += self.author_bias[author]
+      if product in self.product_bias:
+        pred[index] += self.product_bias[product]
 
 
 if __name__ == '__main__':
