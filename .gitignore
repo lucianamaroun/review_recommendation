@@ -1,8 +1,6 @@
 data/*
 old*
 out*
-methods/svm_rank/*
-methods/rlfm/*
 \.DS_Store*
 *\.pyc
 *~
@@ -11,5 +9,5 @@ methods/rlfm/*
 *\.mod
 *\.dat
 *\.old
-algorithms/svm_rank*
-algorithms/rlfm*
+lib/*
+script/*
