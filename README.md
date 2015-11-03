@@ -79,7 +79,7 @@ $ python -m perf.main <set> <rep> <algorithm_configuration>
 Where:
 - \<set\> is either val, for validation, or test.
 - \<rep\> is either 'y' or 'n' indicating the presence or absense, respectively, of repeated executions for each train-validation-test split (this should be true for non-deterministic methods, such as CAP, BETF and RLFM).
-- \<algorithm_configuration\> is a string containing the name of the algorithm and a sequence of parameters values. For example, "cap-k:5,i:10,g:50,n:10,t:0.000100,l:0.100000,a:0.000100,s:y".
+- \<algorithm_configuration\> is a string containing the name of the algorithm and a sequence of parameter values. For example, "cap-k:5,i:10,g:50,n:10,t:0.000100,l:0.100000,a:0.000100,s:y".
 
 Dependencies
 ------------
@@ -92,6 +92,6 @@ This project depends on the following libraries:
 - NumPy: http://www.numpy.org/
 - SciPy: http://www.scipy.org/
 - Scikit-learn: http://scikit-learn.org/stable/
-- NLTK: http://www.nltk.org/ and (the following corpus: maxent_treebank_pos_tagger, punkt, wordnet)
+- NLTK: http://www.nltk.org/ and (the following corpora: maxent_treebank_pos_tagger, punkt, wordnet)
 - TextBlob: https://textblob.readthedocs.org/en/dev/
 - NetworkX: https://networkx.github.io/
