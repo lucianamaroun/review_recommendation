@@ -36,8 +36,7 @@ Prediction Step
 ---------------
 The prediction step uses a to predict reviews' rankings based on helpfulness scores, which is the same as recommending reviews in a top-N format. In this step, a method is fitted on training set and used for prediction of validation and test sets, whose predicted values are output to files. Several command line arguments configure this execution for each strategy; refer to source header of the respective technique. We explain here how to execute BETF and CAP methods.
 
-BETF
-----
+<h4>BETF</h4>
 The unBiased Extended Tensor Factorization (BETF) is a method for recommending reviews based only on latent variables of author, voter, review and product. It optimizes a least squares function using stochastic gradient descent. To run this algorithm, in root directory:
 
 ```
@@ -53,8 +52,7 @@ Where:
 - \<bias_type\> is either 's' static or 'd' for dynamic, being updated in the optimization.
 
 
-CAP
----
+<h4>CAP</h4>
 The Context-Aware review helpfulnes Prediction (CAP) is a method to recommend reviews based on latent variables. It uses a Monte Carlo Expectation Maximization (MCEM) algorithm to adjust latent variables and parameters in order to maximize the likelihood of the observed data (train set). To run this baseline,
 
 ```
@@ -80,8 +78,8 @@ $ python -m perf.main <set> <rep> <algorithm_configuration>
 ```
 Where:
 - \<set\> is either val, for validation, or test.
-- <rep> is either 'y' or 'n' indicating the presence or absense, respectively, of repeated executions for each train-validation-test split (this should be true for non-deterministic methods, such as CAP, BETF and RLFM).
-- <algorithm_configuration> is a string containing the name of the algorithm and a sequence of parameters values. For example, "cap-k:5,i:10,g:50,n:10,t:0.000100,l:0.100000,a:0.000100,s:y".
+- \<rep\> is either 'y' or 'n' indicating the presence or absense, respectively, of repeated executions for each train-validation-test split (this should be true for non-deterministic methods, such as CAP, BETF and RLFM).
+- \<algorithm_configuration\> is a string containing the name of the algorithm and a sequence of parameters values. For example, "cap-k:5,i:10,g:50,n:10,t:0.000100,l:0.100000,a:0.000100,s:y".
 
 Dependencies
 ------------
