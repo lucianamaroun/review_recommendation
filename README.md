@@ -1,31 +1,87 @@
 Review Recommendation
 =====================
-This project solves the problem of review recommendation using different strategies.
+This project contains the implementation of different solutions of review recommendation task. The goal of a method of this kind is to obtain a ranking of reviews for a given user-item pair, regarding a reader user and an item of which reviews are about.
+
+Filtering Step
+--------------
+The filtering step disregards several reviews considering the following criteria: empty fields, foreign text, and reviews in ranking groups (user-item pairs) with less than 10 elements. For filtering reviews, execute in the root folder of the project:
+
+```
+$ python -m script.filter_reviews
+$ python -m script.filter_sparse
+```
+
+Where the first ignores invalid reviews and the second ignore reviews in too small rankings and reviews file is  data/rating.txt.
+
+This step may be ignored if a filtered dataset is available at hand. The filtered dataset of a crawl from Ciao [1], whose format we use, is publicly available at http://homepages.dcc.ufmg.br/~lubm/review/reviews_filt.tar.gz. The original unfiltered dataset of Ciao platform is available at http://www.jiliang.xyz/Ciao.rar.
+
+[1] Jiliang Tang, Huiji Gao, Xia Hu, and Huan Liu. 2013. Context-aware review helpfulness rating prediction. In Procs. of RecSys '13.
 
 Modeling Step
 -------------
-The first step consists in modeling the collection of reviews using a set of features. To run the modeling step in the root folder of the project, 
+The second step consists in modeling the collection of reviews, users and helpfulness votes using a set of features. To run the modeling step in the root folder of the project, 
 
 ```
-$ python -m src.modeling
+$ python -m prep.modeling
 ```
 
-The output for the train and test sets is configured in the header of the file src/modeling.py (variables _TRAIN_FILE  and _TEST_FILE).
+After modeling all entitites, test and validation should be filtered to evaluate rankings properly. We considered a filter of at least 5 reviews per ranking, since we used nDCG@5 as metric.
+
+```
+$ python -m script.filter_val
+$ python -m script.filter_test
+```
 
 Prediction Step
 ---------------
-The prediction step uses a machine learning method to predict helpfulness ratings, i.e., recommend reviews. Several command line arguments configure this execution. To run the prediction step, 
+The prediction step uses a to predict reviews' rankings based on helpfulness scores, which is the same as recommending reviews in a top-N format. Several command line arguments configure this execution for each strategy; refer to source header of the respective technique. We explain here how to execute BETF and CAP methods.
+
+BETF
+----
+The unBiased Extended Tensor Factorization (BETF) is a method for recommending reviews based only on latent variables of author, voter, review and product. It optimizes a least squares function using stochastic gradient descent. To run this algorithm, in root directory:
 
 ```
-$ python -m src.prediction -p <predictor> [-b <bias_code>] [-s <scaling_type>] [-i <iteration_count>]
+$ python -m algo.betf.main [-k <latent_dimensions>] [-l <learning_rate>] [-r <regularization_factor>] [-e <convergence_tolerance>] [-i <number_iterations>]
 ```
 
-In this command, <predictor> refers to the algorithm to be used (the algorithm codes are defined in the header of src/prediction.py under the variable _PREDICTORS). The <bias_code> refers to an optional bias adjustment using a subset of {'r', 'v', 'a'}, which corresponds to review, voter and author bias, respectively. The <scaling_type> configures feature scaling using either the scaling to the range to \[0,1\] ('minmax') or the mean normalization plus division by standard deviation ('standard'). The <iteration_count> is the number of times to reproduce the prediction, useful when the algorithm is not deterministic.
+Where:
+- \<latent_dimensions\> is an integer with the number of latent dimensions,      
+- \<learning_rate\> is a float representing the update rate of gradient descent, 
+- \<regularization\> is a float with the weight of regularization in objective function,
+- \<tolerance\> is a float with the tolerance for convergence,
+- \<iterations\> is an integer with the maximum number of iterations of gradient descent,
+- \<bias_type\> is either 's' static or 'd' for dynamic, being updated in the optimization.
 
-CAP Baseline
-------------
+
+CAP
+---
 The Context-Aware review helpfulnes Prediction (CAP) is a method to recommend reviews based on latent variables. It uses a Monte Carlo Expectation Maximization (MCEM) algorithm to adjust latent variables and parameters in order to maximize the likelihood of the observed data (train set). To run this baseline,
 
 ```
-$ python -m cap.prediction
+$ python -m algo.cap.main [-k <latent_dimensions>] [-i <number_iterations>] [-g <gibbs_samples>] [-n <newton_iterations>] [-t <newton_tolerance>] [-l <newton_learning_rate>] [-a <eta>] [-s <scale>]
 ```
+
+Where:
+- \<latent_dimensions\> is an integer with the number of latent dimensions,      
+- \<number_iterations\> is an integer with number of EM iterations,                     
+- \<gibbs_samples\> is an integer with number of gibbs samples in each EM iteration,
+- \<newton_iterations\> is an integer with number of newton-raphson iterations,      
+- \<newton_tolerance\> is a float with newton-raphson convergence tolerance,          
+- \<newton_learning_rate\> is a float with newton-raphson learning rate,             
+- \<eta\> is a float constant used in OLS for easier computation of inverse,                  
+- \<scale\> defines whether scale features, either 'y' for yes or 'n' for no. 
+
+Dependencies
+------------
+
+<h4>External Methods</h4>
+SVMRank (`algo/l2r/svmrank.py`), LambdaMART (`algo/l2r/lambdamart.py`) and RLFM (`algo/recsys/rlfm.py`) depend on third party modules to execute. SVMRank source code is available at https://www.cs.cornell.edu/people/tj/svm_light/svm_rank.html; LambdaMART is available inside RankLib at http://sourceforge.net/p/lemur/wiki/RankLib/; and RLFM at https://github.com/yahoo/Latent-Factor-Models. All of them shall be placed at lib folder under directories svm_rank, ranklib and rlfm, respectively.
+
+<h4>Python Libraries</h4>
+This project depends on the following libraries:
+- NumPy: http://www.numpy.org/
+- SciPy: http://www.scipy.org/
+- Scikit-learn: http://scikit-learn.org/stable/
+- NLTK: http://www.nltk.org/ and (the following corpus: maxent_treebank_pos_tagger, punkt, wordnet)
+- TextBlob: https://textblob.readthedocs.org/en/dev/
+- NetworkX: https://networkx.github.io/
