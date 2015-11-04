@@ -84,13 +84,13 @@ Where:
 Dependencies
 ------------
 
-<h4>External Methods</h4>
+<h4>External Modules</h4>
 SVMRank (`algo/l2r/svmrank.py`), LambdaMART (`algo/l2r/lambdamart.py`) and RLFM (`algo/recsys/rlfm.py`) depend on third party modules to execute, respectively:
 - <a href="https://www.cs.cornell.edu/people/tj/svm_light/svm_rank.html">SVMRank</a>
 - <a href="http://sourceforge.net/p/lemur/wiki/RankLib/">RankLib</a>
 - <a href="https://github.com/yahoo/Latent-Factor-Models">RLFM</a>. 
 
-All of them shall be placed inside lib folder in directories svm_rank, ranklib and rlfm, respectively.
+All of them shall be placed inside `lib` folder, specifically in paths `lib/svm_rank`, `lib/ranklib` and `lib/rlfm`, respectively.
 
 <h4>Python Libraries</h4>
 This project depends on the following libraries:
