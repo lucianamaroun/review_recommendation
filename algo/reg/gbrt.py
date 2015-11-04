@@ -41,7 +41,7 @@ from util.bias import BiasModel
 from util.scaling import fit_scaler, fit_scaler_by_query, scale_features
 
 
-_OUTPUT_DIR = 'out/pred'
+_OUTPUT_DIR = 'out/test'
 _VAL_DIR = 'out/val'
 _PKL_DIR = 'out/pkl'
 _ALPHA = 0.1

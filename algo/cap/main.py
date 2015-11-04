@@ -16,7 +16,7 @@
     <burn_in> is an integer with number of first samples ignored in Gibbs
       Sampling,
     <nr_iterations> is an integer with number of newton-raphson iterations,
-    <nr_tolerant> is a float with newton-raphson convergence tolerance,
+    <nr_tolerance> is a float with newton-raphson convergence tolerance,
     <nr_learning_rate> is a float with newton-raphson learning rate,
     <eta> is a float constant used in OLS for easier inversion,
     <scale> whether scale features, either 'y' for yes or 'n' for no. 
@@ -43,7 +43,7 @@ from util.avg_model import compute_avg_user, compute_avg_model
 from util.scaling import fit_scaler, scale_features
 
 
-_OUTPUT_DIR = 'out/pred'
+_OUTPUT_DIR = 'out/test'
 _VAL_DIR = 'out/val'
 _PKL_DIR = 'out/pkl'
 _SCALE = True
@@ -88,7 +88,7 @@ def load_args():
       exit()
     i = i + 2
   global _CONF_STR
-  _CONF_STR = 'k:%d,i:%d,s:%d,b:%d,n:%d,t:%f,l:%f,a:%f,s:%s' % (const.K,
+  _CONF_STR = 'k:%d,i:%d,g:%d,b:%d,n:%d,t:%f,l:%f,a:%f,s:%s' % (const.K,
       const.EM_ITER[0], const.SAMPLES[0], const.BURN_IN[0], const.NR_ITER,
       const.NR_TOL, const.NR_STEP, const.ETA, 'y' if _SCALE else 'n')
 
@@ -296,7 +296,7 @@ def main():
       f_train = scale_cap_features(scaler, f_train)
       f_val = scale_cap_features(scaler, f_val)
       f_test = scale_cap_features(scaler, f_test)
-    for j in xrange(REP):
+    for j in xrange(1):#REP):
       print 'Creating variables'
       var_groups = create_variable_groups()
       populate_variables(var_groups, train, users, trusts, f_train)

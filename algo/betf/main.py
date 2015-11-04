@@ -27,10 +27,10 @@
 from math import sqrt
 from sys import argv, exit
 from random import shuffle
+from pickle import load
 
 from numpy import nan, isnan, tensordot, array, mean, vstack
 from numpy.random import uniform 
-from pickle import load
 
 from algo.const import NUM_SETS, RANK_SIZE, REP
 from util.aux import sigmoid, sigmoid_der1
@@ -46,7 +46,7 @@ _BIAS = 'd'
 _UPDATE_BIAS = True
 _PKL_DIR = 'out/pkl'
 _VAL_DIR = 'out/val'
-_OUTPUT_DIR = 'out/pred'
+_OUTPUT_DIR = 'out/test'
 
 
 def load_args():
@@ -205,8 +205,7 @@ class BETF_Model(object):
       if author not in self.author_rating_bias:
         self.author_rating_bias[author] = 0
         author_count[author] = 0
-      self.author_rating_bias[author] += (review['rating'] - 
-          self.rating_avg)
+      self.author_rating_bias[author] += (review['rating'] - self.rating_avg)
       author_count[author] += 1
     for author in self.author_rating_bias:
       self.author_rating_bias[author] /= float(author_count[author])
@@ -216,8 +215,8 @@ class BETF_Model(object):
       if product not in self.product_rating_bias:
         self.product_rating_bias[product] = 0
         product_count[product] = 0
-      self.product_rating_bias[product] += (review['rating'] -
-          self.rating_avg - self.author_rating_bias[author]) 
+      self.product_rating_bias[product] += (review['rating'] - self.rating_avg
+          - self.author_rating_bias[author]) 
       product_count[product] += 1
     for product in self.product_rating_bias:
       self.product_rating_bias[product] /= float(product_count[product])

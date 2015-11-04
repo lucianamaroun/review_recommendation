@@ -20,7 +20,7 @@ from perf.metrics import calculate_rmse, calculate_ndcg
 _PREDICTORS = ['om', 'rm', 'am', 'vm']
 _PRED = 'om'
 _PKL_DIR = 'out/pkl'
-_OUTPUT_DIR = 'out/pred'
+_OUTPUT_DIR = 'out/test'
 
 
 def load_args():

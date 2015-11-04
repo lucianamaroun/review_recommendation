@@ -1,6 +1,6 @@
 data/*
-old*
-out*
+old/*
+out/*
 \.DS_Store*
 *\.pyc
 *~

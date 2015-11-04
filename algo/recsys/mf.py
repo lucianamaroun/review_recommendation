@@ -40,7 +40,7 @@ _BETA = 0.01      # regularization factor
 _TOL = 1e-6
 _BIAS = False 
 _VAL_DIR = 'out/val'
-_OUTPUT_DIR = 'out/pred'
+_OUTPUT_DIR = 'out/test'
 _PKL_DIR = 'out/pkl'
 _CONF_STR = None
 
@@ -98,10 +98,9 @@ class MF_Model(object):
           None.
     """
     self.U = None # Matrix of user (voter( latent arrays (N_v, K)
-    self.R = None # Matrix of review latent arrays (N_r, K)
+    self.R = None # Matrix of author latent arrays (N_a, K)
     self.user_map = None # Map from user ids to matrix indices (lines)
-    self.review_map = None # Map from review ids to matrix indices (lines)
-   # self.review_bias = None
+    self.author_map = None # Map from review ids to matrix indices (lines)
     self.author_bias = None
     self.user_bias = None
     self.overall_mean = None
@@ -117,22 +116,19 @@ class MF_Model(object):
           None. Instance fields are updated.
     """
     users = sorted(set([vote['voter'] for vote in votes]))
-   # reviews = sorted(set([vote['review'] for vote in votes]))
     authors = sorted(set([vote['author'] for vote in votes]))
     self.user_map = {u:i for i, u in enumerate(users)}
-   # self.review_map = {r:i for i, r in enumerate(reviews)}
     self.author_map = {r:i for i, r in enumerate(authors)}
     seed(int(time() * 1000000) % 1000000)
     self.U = uniform(1e-10, 1e-8, (len(users), _K))
-   # self.R = uniform(1e-10, 1e-6, (len(reviews), _K))
     self.A = uniform(1e-10, 1e-8, (len(authors), _K))
     self.overall_mean = float(sum([v['vote'] for v in votes])) / len(votes)
 
   def _calculate_bias(self, votes):
     self.user_bias = {}
     user_count = {}
-    self.review_bias = {}
-    review_count = {}
+    self.author_bias = {}
+    author_count = {}
     for vote in votes:
       user = vote['voter']
       if user not in self.user_bias:
@@ -144,15 +140,15 @@ class MF_Model(object):
       self.user_bias[user] /= float(user_count[user])
     for vote in votes:
       user = vote['voter']
-      review = vote['review']
-      if review not in self.review_bias:
-        self.review_bias[review] = 0
-        review_count[review] = 0
-      self.review_bias[review] += (vote['vote'] - self.overall_mean -
+      author = vote['author']
+      if author not in self.author_bias:
+        self.author_bias[author] = 0
+        author_count[author] = 0
+      self.author_bias[author] += (vote['vote'] - self.overall_mean -
           self.user_bias[user]) 
-      review_count[review] += 1
-    for review in self.review_bias:
-      self.review_bias[review] /= float(review_count[review])
+      author_count[author] += 1
+    for author in self.author_bias:
+      self.author_bias[author] /= float(author_count[author])
 
   def fit(self, votes):
     """ Fits a MF model given training set (votes).
@@ -171,56 +167,36 @@ class MF_Model(object):
     for it in xrange(_ITER):
       for vote in votes:
         u = self.user_map[vote['voter']]
-       # r = self.review_map[vote['review']]
         a = self.author_map[vote['author']]
-       # dot = self.U[u,:].dot(self.R[r,:].T)
         dot = self.U[u,:].dot(self.A[a,:].T)
         if _BIAS:
           dot += self.overall_mean + self.user_bias[vote['voter']] + \
-              self.review_bias[vote['review']]
+              self.author_bias[vote['author']]
         error = dot - float(vote['vote'])
         if _BIAS:
           self.user_bias[vote['voter']] -= _ALPHA * (error + _BETA *
               self.user_bias[vote['voter']])
-          self.review_bias[vote['review']] -= _ALPHA * (error + _BETA *
-              self.review_bias[vote['review']])
-       # old_u = copy(self.U[u,:])
+          self.author_bias[vote['author']] -= _ALPHA * (error + _BETA *
+              self.author_bias[vote['author']])
         new_u = self.U[u,:] - _ALPHA * (error * self.A[a,:] + \
             _BETA * self.U[u,:])
-       # old_r = copy(self.R[r,:])
-       # self.R[r,:] += _ALPHA * (2 * error * self.U[u,:] - \
-       #     _BETA * self.R[r,:])
         new_a = self.A[a,:] - _ALPHA * (error * self.U[u,:] + \
             _BETA * self.A[a,:])
         self.U[u,:] = new_u
         self.A[a,:] = new_a
-       # if self.R[r,0] == float('inf') or self.R[r,0] == - float('inf') or \
-       #     isnan(self.R[r,0]) or isnan(self.U[u,0]):
-       #   print old_r
-       #   print old_u
-       #   print self.R[r,:]
-       #   print self.U[u,:]
-       #   print vote['vote']
-       #   print dot
-       #   print error
-       #   import sys
-       #   sys.exit()
       value = 0.0
       for vote in votes:
         u = self.user_map[vote['voter']]
-       # r = self.review_map[vote['review']]
         a = self.author_map[vote['author']]
-       # dot = self.U[u,:].dot(self.R[r,:].T)
         dot = self.U[u,:].dot(self.A[a,:].T)
         if _BIAS:
           dot += self.overall_mean + self.user_bias[vote['voter']] + \
-              self.review_bias[vote['review']]
+              self.author_bias[vote['author']]
         value += (vote['vote'] - dot) ** 2
         if _BIAS:
           value += self.user_bias[vote['voter']] ** 2 + \
-              self.review_bias[vote['review']] ** 2
+              self.author_bias[vote['author']] ** 2
         for k in xrange(_K):
-         # value += _BETA * (self.U[u,k] ** 2 + self.R[r,k] ** 2)
           value += _BETA * (self.U[u,k] ** 2 + self.A[a,k] ** 2)
         value /= 2.0
       if abs(previous - value) < _TOL:
@@ -242,15 +218,12 @@ class MF_Model(object):
     cold_start = 0
     for vote in votes:
       u = self.user_map[vote['voter']] if vote['voter'] in self.user_map else -1
-      # r = self.review_map[vote['review']] if vote['review'] in self.review_map else -1
       a = self.author_map[vote['author']] if vote['author'] in self.author_map else -1
       if u != -1 and a != -1:
-       # dot = self.U[u,:].dot(self.R[r,:].T) 
         dot = self.U[u,:].dot(self.A[a,:].T)
         if _BIAS:
           dot += self.overall_mean + self.user_bias[vote['voter']] + \
               self.author_bias[vote['author']]
-            # self.review_bias[vote['review']]
         pred.append(dot)
       else:
         pred.append(self.overall_mean)

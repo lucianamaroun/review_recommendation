@@ -21,13 +21,14 @@
 
 from commands import getstatusoutput, getoutput
 from pickle import dump, load
-from numpy import nan, isnan
+from numpy import array, nan, isnan, vstack
 from sys import argv
 
 from algo.const import NUM_SETS, RANK_SIZE, REP, REVIEW_FEATS, \
     AUTHOR_FEATS, VOTER_FEATS, SIM_FEATS, CONN_FEATS 
 from perf.metrics import calculate_rmse, calculate_avg_ndcg
 from util.avg_model import compute_avg_user, compute_avg_model
+from util.scaling import fit_scaler, scale_features 
 
 
 _K = 5
@@ -39,7 +40,7 @@ _FEAT = 'cap'
 _DATA_DIR = 'out/data'
 _TRAIN_DIR = 'out/train'
 _VAL_DIR = 'out/val'
-_OUTPUT_DIR = 'out/pred'
+_OUTPUT_DIR = 'out/test'
 _PKL_DIR = 'out/pkl'
 _CONF_STR = None
 
@@ -82,6 +83,7 @@ def load_args():
   _CONF_STR = 'k:%d,i:%d,g:%d,b:%d,s:%s,f:%s' % (_K, _ITER, _SAMPLES, _BURN_IN,
       'y' if _SCALE else 'n', _FEAT)
 
+
 def model_dyad(votes, sim, conn, avg_sim, avg_conn):
   """ Models a dyad observed data (interaction features) for each vote.
 
@@ -93,7 +95,7 @@ def model_dyad(votes, sim, conn, avg_sim, avg_conn):
         avg_conn: dictionary with average connection for mean imputation.
 
       Returns:
-        A list of lists with observed features of each votes.
+        An arras of arrays with observed features of each votes.
   """
   model = []
   for vote in votes:
@@ -112,7 +114,7 @@ def model_dyad(votes, sim, conn, avg_sim, avg_conn):
       else:
         instance.append(u_conn[feature])
     model.append(instance)
-  return model
+  return array(model)
 
 
 def output_dyad(name, votes, model, i):
@@ -158,9 +160,9 @@ def model_items(reviews, users, train_reviews, test_reviews, avg_user):
         avg_user: dictionary with average user model for mean imputation.
 
       Returns:
-        Fours lists: with lists of features for items in train, with ids of each
-      item in previous list, with list of features for items in test, with ids
-      for each item in previous list.
+        Four array-like: with arrays of features for items in train, with ids of
+      each item in previous array, with arrays of features for items in test,
+      with ids for each item in previous array.
   """
   train_model = []
   train_key = []
@@ -196,7 +198,7 @@ def model_items(reviews, users, train_reviews, test_reviews, avg_user):
         instance.append(author[feature])
     test_model.append(instance)
     test_key.append(review_id)
-  return train_model, train_key, test_model, test_key
+  return array(train_model), train_key, array(test_model), test_key
 
 
 def model_users(users, train_users, test_users, avg_user):
@@ -213,9 +215,9 @@ def model_users(users, train_users, test_users, avg_user):
         avg_user: dictionary with average user model for mean imputation.
 
       Returns:
-        Fours lists: with lists of features for users in train, with ids of each
-      user in previous list, with list of features for users in test, with ids
-      for each user in previous list.
+        Four array-like: with arrays of features for users in train, with ids of each
+      user in previous array, with array of features for users in test, with ids
+      for each user in previous array.
   """
   train_model = []
   train_key = []
@@ -243,7 +245,7 @@ def model_users(users, train_users, test_users, avg_user):
         instance.append(user[feature]) 
     test_model.append(instance)
     test_key.append(user_id)
-  return train_model, train_key, test_model, test_key
+  return array(train_model), train_key, array(test_model), test_key
 
 
 def output_entity(name, model, ids, i):
@@ -314,9 +316,9 @@ def run():
       user_scaler = fit_scaler('minmax', X_user_train)
       X_user_train = scale_features(user_scaler, X_user_train)
       X_user_test = scale_features(user_scaler, X_user_test)
-    X_item = X_item_train + X_item_test
+    X_item = vstack((X_item_train, X_item_test))
     item_key = item_train_key + item_test_key
-    X_user = X_user_train + X_user_test
+    X_user = vstack((X_user_train, X_user_test))
     user_key = user_train_key + user_test_key
 
     print 'Outputting model'

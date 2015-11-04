@@ -44,7 +44,7 @@ _PKL_DIR = 'out/pkl'
 _VAL_DIR = 'out/val'
 _DATA_DIR = 'out/data'
 _MODEL_DIR = 'out/model'
-_OUTPUT_DIR = 'out/pred'
+_OUTPUT_DIR = 'out/test'
 _CONF_STR = None
 
 

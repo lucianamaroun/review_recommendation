@@ -4,8 +4,8 @@
     Models reviews, users, votes and users interactions. 
 
     Usage:
-      $ python -m preprocessing.model
-    on the project root directory.
+      $ python -m prep.model
+    in project root directory.
 """
 
 
