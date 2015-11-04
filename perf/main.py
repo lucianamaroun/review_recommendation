@@ -70,7 +70,7 @@ def load_data(predictor, set_type, index, rep):
     predfile = open('out/val/%s-%d-%d.dat'% (predictor, index, rep), 'r')
   else:
     votes = load(open('out/pkl/test-%d.pkl' % index, 'r'))
-    predfile = open('out/pred/%s-%d-%d.dat'% (predictor, index, rep), 'r')
+    predfile = open('out/test/%s-%d-%d.dat'% (predictor, index, rep), 'r')
   reviews = load(open('out/pkl/reviews-%d.pkl' % index, 'r'))
   pred = [float(line.strip()) for line in predfile]
   predfile.close()
@@ -145,20 +145,26 @@ def main():
   predictor, set_type, rep = parse_args()
   rmse = []
   ndcg = []
+  output = open('out/res/%s-%s-%s.dat' % (predictor, set_type, predictor), 'w')
   for i in xrange(NUM_SETS):
     rmse_sum = 0
     ndcg_sum = array([0] * RANK_SIZE)
     repetitions = REP if rep else 1
+    print >> output, 'Results on Set Type %d' % (i+1)
     for j in xrange(repetitions):
       votes, pred, reviews = load_data(predictor, set_type, i, j)
-      output = open('out/res/%s-%s-%d-%d.dat' % (predictor, set_type, i, j), 'w')
       rmse_sum += evaluate_regression(pred, votes, output)
       ndcg_sum = ndcg_sum + array(evaluate_ranking(pred, votes, reviews, output))
-      output.close()
     rmse.append(rmse_sum / repetitions)
     ndcg.append(ndcg_sum / repetitions)
-
-  output = open('out/res/%s-%s.dat' % (predictor, set_type), 'w')
+    print >> output, '-----'
+  if rep:
+    for i in xrange(NUM_SETS):
+      print 'RMSE on set %d: %f' % (i+1, rmse[i])
+      print >> output, 'RMSE on set %d: %f' % (i+1, rmse[i])
+      for j in xrange(len(ndcg[i])):
+        print 'nDCG@%d on set %d: %f' % (j+1, i+1, ndcg[i][j])
+        print >> output, 'nDCG@%d on set %d: %f' % (j+1, i+1, ndcg[i][j])
   mean_rmse = mean(rmse)
   sd_rmse = std(rmse, ddof=1)
   err = t.cdf(CONF_QT, len(rmse)-1) * sd_rmse / sqrt(len(rmse)-1) 
