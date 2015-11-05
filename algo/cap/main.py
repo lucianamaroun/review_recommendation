@@ -296,7 +296,7 @@ def main():
       f_train = scale_cap_features(scaler, f_train)
       f_val = scale_cap_features(scaler, f_val)
       f_test = scale_cap_features(scaler, f_test)
-    for j in xrange(1):#REP):
+    for j in xrange(REP):
       print 'Creating variables'
       var_groups = create_variable_groups()
       populate_variables(var_groups, train, users, trusts, f_train)

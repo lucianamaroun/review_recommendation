@@ -60,6 +60,9 @@ def fit_scaler_by_query(scale_type, data, qid, qid_dep_size):
           scale with zero mean and unit standard deviation, or 'minmax' for range
           between 0 and 1.
         data: list of arrays with instances to be scaled.
+        qid: list of query ids associated to each instance.
+        qid_dep_size: number of features query-dependent, which are in the end
+          of the instance array of features.
 
       Returns:
         A scaler that fits the data.
@@ -74,17 +77,19 @@ def fit_scaler_by_query(scale_type, data, qid, qid_dep_size):
   return overall_scaler
 
 
-def scale_features(scaler, data, qid=None, qid_dep_size=None):
-  """ Scales features from train and test, after fitting scaler on train.
-
-      Observation:
-      - The scaler is fit only using training set and, then, applied to both
-      train and test.
+def scale_features(scaler, data, qid=None, qid_dep_size=None, 
+    scale_type='minmax'):
+  """ Scales features from data given a fitted scaler. 
 
       Args:
-        scale_type: string with scale type, either 'standard' of 'minmax'.
-        train: list of instances of the train.
-        test: list of instances of the test.
+        scaler: a scaler object with transform function.
+        data: list of instances to scale. 
+        qid: list of query ids associated to each instance.
+        qid_dep_size: number of features query-dependent, which are in the end
+          of the instance array of features.
+        scale_type: indicates the type of scale to adopt. It can be 'standard' to 
+          scale with zero mean and unit standard deviation, or 'minmax' for range
+          between 0 and 1.
 
       Returns:
         A pair with scaled train and test sets. 
@@ -100,7 +105,10 @@ def scale_features(scaler, data, qid=None, qid_dep_size=None):
     qid_grouped = group_by_qid(q_dep, qid)
     q_scalers = {}
     for q in qid_grouped: 
-      q_scalers[q] = MinMaxScaler(copy=False).fit(qid_grouped[q])
+      if scale_type == 'minmax':
+        q_scalers[q] = MinMaxScaler(copy=False).fit(qid_grouped[q])
+      if scale_type == 'standard':
+        q_scalers[q] = StandardScaler(copy=False).fit(qid_grouped[q])
     for i in xrange(q_dep.shape[0]):
       q_dep[i] = q_scalers[qid[i]].transform([q_dep[i]])
     data = hstack((q_undep, q_dep))
