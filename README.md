@@ -2,6 +2,16 @@ Review Recommendation
 =====================
 This project contains the implementation of different solutions of review recommendation task. The goal of a method of this kind is to obtain a ranking of reviews for a given user-item pair, regarding a reader user and an item of which reviews are about.
 
+Directory Structure
+-------------------
+- `algo`: contains algorithms' implementations, divided in classes (except specialized solutions, which have their own directory).
+- `lib`: holds third-party modules.
+- `math`: contains mathematical formulation for specialized solutions (CAP and BETF).
+- `perf`: comprises evaluation of predictors performance.
+- `prep`: includes implementation of preprocessing of data, regarding filtering and modeling into features.
+- `test`: contains test cases for algorithms and auxiliary methods.
+- `util`: comprises useful functions and methods used by several algorithms.
+
 Filtering Step
 --------------
 The filtering step disregards several reviews considering the following criteria: empty fields, foreign text, and reviews in ranking groups (user-item pairs) with less than 10 elements. For filtering reviews, execute in the root folder of the project:
