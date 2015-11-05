@@ -165,11 +165,6 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
       else:
         example.append(author[feature])
     voter = users[vote['voter']] if vote['voter'] in users else avg_user
-    for feature in VOTER_FEATS[_FEAT_TYPE]:
-      if isnan(voter[feature]):
-        example.append(avg_user[feature]) 
-      else:
-        example.append(voter[feature]) 
     av = (author['id'], voter['id'])
     u_sim = sim[av] if av in sim else avg_sim
     for feature in SIM_FEATS[_FEAT_TYPE]:
@@ -185,10 +180,6 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
         example.append(u_conn[feature]) 
     X.append(example)
     y.append(vote['vote'])
-   # if vote['voter'] not in voter_map:
-   #   q_count += 1
-   #   voter_map[vote['voter']] = q_count
-   # qid.append(voter_map[vote['voter']])
     qid.append(int(vote['voter']))
   return X, y, qid
 
