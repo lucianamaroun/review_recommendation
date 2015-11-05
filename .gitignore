@@ -9,5 +9,6 @@ out/*
 *\.mod
 *\.dat
 *\.old
-lib/*
-script/*
+lib/rlfm*
+lib/svm_rank*
+lib/ranklib*
