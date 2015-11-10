@@ -10,7 +10,7 @@
 from random import sample
 from math import ceil
 
-from preprocessing.parsing import parse_reviews
+from prep.parsing import parse_reviews
 
 
 def sample_reviews(sample_ratio):

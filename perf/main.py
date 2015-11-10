@@ -145,7 +145,7 @@ def main():
   predictor, set_type, rep = parse_args()
   rmse = []
   ndcg = []
-  output = open('out/res/%s-%s-%s.dat' % (predictor, set_type, predictor), 'w')
+  output = open('out/res/%s-%s.dat' % (predictor, set_type), 'w')
   for i in xrange(NUM_SETS):
     rmse_sum = 0
     ndcg_sum = array([0] * RANK_SIZE)

@@ -51,6 +51,7 @@ Where:
 - \<iterations\> is an integer with the maximum number of iterations of gradient descent,
 - \<bias_type\> is either 's' static or 'd' for dynamic, being updated in the optimization.
 
+Whenever a parameter is not set, a default value is used.
 
 <h4>CAP</h4>
 The Context-Aware review helpfulnes Prediction (CAP) is a method to recommend reviews based on latent variables. It uses a Monte Carlo Expectation Maximization (MCEM) algorithm to adjust latent variables and parameters in order to maximize the likelihood of the observed data (train set). To run this baseline,
@@ -68,6 +69,8 @@ Where:
 - \<newton_learning_rate\> is a float with newton-raphson learning rate,             
 - \<eta\> is a float constant used in OLS for easier computation of inverse,                  
 - \<scale\> defines whether scale features, either 'y' for yes or 'n' for no. 
+
+Whenever a parameter is not set, a default value is used.
 
 Evaluation Step
 ---------------

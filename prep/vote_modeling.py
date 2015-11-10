@@ -11,6 +11,7 @@
 
 from math import ceil
 from datetime import datetime
+from random import shuffle
 
 _SLIDE = 0.05
 _SPLITS = 5
@@ -64,6 +65,7 @@ def split_votes(votes):
   for i in xrange(_SPLITS):
     start = delta * i
     window = votes[start:start+w_size]
+    shuffle(window)
     train_cut = int(ceil(w_size * _TRAIN_RATIO))
     val_cut = train_cut + int(ceil(w_size * _VAL_RATIO))
     set_split = window[:train_cut], window[train_cut:val_cut], \

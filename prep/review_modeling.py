@@ -21,7 +21,7 @@ from nltk import pos_tag
 from nltk.corpus import wordnet
 from numpy import nan, isnan, mean
 
-from preprocessing.parsing import parse_reviews
+from prep.parsing import parse_reviews
 from lib.sentiment.sentiwordnet import SimplifiedSentiWordNet
 
 
