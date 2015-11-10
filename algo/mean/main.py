@@ -14,7 +14,7 @@ from sys import argv, exit
 from pickle import load
 
 from algo.const import NUM_SETS, RANK_SIZE
-from perf.metrics import calculate_rmse, calculate_ndcg
+from perf.metrics import calculate_rmse, calculate_avg_ndcg
 
 
 _PREDICTORS = ['om', 'rm', 'am', 'vm']
@@ -38,8 +38,8 @@ def load_args():
       global _PRED 
       _PRED = argv[i+1]
     else:
-      print ('Usage: python -m algo.mean.main [-p <predictor>], 
-          <predictor> is in the set [om, rm, am, vm]')
+      print ('Usage: python -m algo.mean.main [-p <predictor>], '
+          '<predictor> is in the set [om, rm, am, vm]')
       exit()
     i = i + 2
 
