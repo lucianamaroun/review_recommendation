@@ -10,7 +10,7 @@
     Usage:
     $ python -m algo.betf.main [-k <latent_dimensions>]
       [-l <learning_rate>] [-r <regularization>] [-e <tolerance>]
-      [-i <iterations>] [-b <bias_type>]
+      [-i <iterations>]
     where
     <latent_dimensions> is an integer with the number of latent dimensions,
     <learning_rate> is a float representing the update rate of gradient descent,
@@ -18,9 +18,7 @@
       function,
     <tolerance> is a float with the tolerance for convergence,
     <iterations> is an integer with the maximum number of iterations of gradient
-      descent,
-    <bias_type> is either 's' static or 'd' for dynamic, being updated in the
-      optimization.
+      descent.
 """
 
 
@@ -37,13 +35,12 @@ from util.aux import sigmoid, sigmoid_der1
 from perf.metrics import calculate_rmse, calculate_avg_ndcg
 
 
-_K = 5
+_K = 5          # number of latent dimensions
 _ITER = 10      # number of iterations of stochastic gradient descent
 _ALPHA = 1      # starting learning rate
 _BETA = 0.1     # regularization factor
-_TOL = 1e-6
-_BIAS = 's'
-_UPDATE_BIAS = False
+_TOL = 1e-6     # convergence tolerance
+
 _PKL_DIR = 'out/pkl'
 _VAL_DIR = 'out/val'
 _OUTPUT_DIR = 'out/test'
@@ -82,7 +79,7 @@ def load_args():
     else:
       print ('Usage: $ python -m algo.betf.main '
           '[-k <latent_dimensions>] [-l <learning_rate>] [-r <regularization>] '
-          '[-e <tolerance>] [-i <iterations>] [-b <bias_type>]')
+          '[-e <tolerance>] [-i <iterations>]')
       exit()
     i = i + 2
 
@@ -99,38 +96,35 @@ class BETF_Model(object):
         Returns:
           None.
     """
-    self.V = None # Matrix of user (voter) latent arrays (N_v, K)
-    self.A = None # Matrix of user (author) latent arrays (N_a, K)
-    self.P = None # Matrix of product latent arrays (N_p, K)
-    self.S = None # Central tensor
-    self.voter_map = None 
-    self.author_map = None 
-    self.user_map = None
-    self.product_map = None 
-    self.voter_bias = None
-    self.author_bias = None
-    self.product_bias = None
-    self.rating_avg = None
-    self.overall_mean = None
-    self.mean_voter = None 
-    self.mean_author = None 
-    self.mean_product = None
+    self.V = None             # Matrix of user (voter) latent arrays (N_v, K)
+    self.A = None             # Matrix of user (author) latent arrays (N_a, K)
+    self.P = None             # Matrix of product latent arrays (N_p, K)
+    self.S = None             # Central tensor
+    self.voter_map = None     # Maps voter ids to indices 
+    self.author_map = None    # Maps author ids to indices 
+    self.product_map = None   # Maps product ids to indices 
+    self.voter_bias = None    # Bias of voters in helpfulness value
+    self.review_a_bias = None # Bias of reviews' authors in helpfulness value
+    self.review_p_bias = None # Bias of reviews' products in helpfulness value
+    self.author_bias = None   # Bias of author in rating value
+    self.product_bias = None  # Bias of product in rating value
+    self.rating_avg = None    # Overall average rating
+    self.overall_mean = None  # Overall mean helpfulness
 
   def _initialize_matrices(self, votes, reviews):
-    """ Initializes matrices and mappings given votes. Each entity id is mapped
-        to an index in a dimension of  the matrix.
+    """ Initializes matrices and mappings given votes and reviews. Each entity 
+        id is mapped to an index in a dimension of a matrix.
 
         Args:
           votes: list of votes (training set).
+          reviews: list of reviews in training set.
         
         Returns:
           None. Instance fields are updated.
     """
     voters = set([vote['voter'] for vote in votes])
     authors = set([vote['author'] for vote in votes])
-        #.union(set([review['author'] for review in reviews.itervalues()]))
     products = set([reviews[v['review']]['product'] for v in votes])
-        #.union(set([review['product'] for review in reviews.itervalues()]))
     self.voter_map = {u:i for i, u in enumerate(voters)}
     self.author_map = {a:i for i, a in enumerate(authors)}
     self.product_map = {p:i for i, p in enumerate(products)}
@@ -141,11 +135,21 @@ class BETF_Model(object):
     self.overall_mean = float(sum([v['vote'] for v in votes])) / len(votes)
   
   def _calculate_vote_bias(self, votes, reviews):
+    """ Calculates entities' biases related to vote (helpfulness) value.
+
+        Args:
+          votes: list of votes (training set).
+          reviews: list of reviews in training set.
+
+        Returns:
+          None. Instance fields are updated.
+    """
     self.voter_bias = {}
     voter_count = {}
-    self.review_bias = {}
-    review_count = {}
-    count = 0
+    self.review_a_bias = {}
+    review_a_count = {}
+    self.review_p_bias = {}
+    review_p_count = {}
     for vote in votes:
       voter = vote['voter']
       if voter not in self.voter_bias:
@@ -157,15 +161,25 @@ class BETF_Model(object):
       self.voter_bias[voter] /= float(voter_count[voter])
     for vote in votes:
       voter = vote['voter']
-      review = vote['review']
-      if review not in self.review_bias:
-        self.review_bias[review] = 0
-        review_count[review] = 0
-      self.review_bias[review] += (vote['vote'] - self.overall_mean -
-          self.voter_bias[voter]) 
-      review_count[review] += 1
-    for review in self.review_bias:
-      self.review_bias[review] /= float(review_count[review])
+      review_a = vote['author']
+      if review_a not in self.review_a_bias:
+        self.review_a_bias[review_a] = 0
+        review_a_count[review_a] = 0
+      self.review_a_bias[review_a] += (vote['vote'] - self.overall_mean)
+      review_a_count[review_a] += 1
+    for review_a in self.review_a_bias:
+      self.review_a_bias[review_a] /= float(review_a_count[review_a])
+    for vote in votes:
+      voter = vote['voter']
+      review_a = vote['author']
+      review_p = reviews[vote['review']]['product']
+      if review_p not in self.review_p_bias:
+        self.review_p_bias[review_p] = 0
+        review_p_count[review_p] = 0
+      self.review_p_bias[review_p] += (vote['vote'] - self.overall_mean)
+      review_p_count[review_p] += 1
+    for review_p in self.review_p_bias:
+      self.review_p_bias[review_p] /= float(review_p_count[review_p])
       
   def _calculate_rating_bias(self, reviews):
     self.author_bias = {}
@@ -193,8 +207,7 @@ class BETF_Model(object):
       if product not in self.product_bias:
         self.product_bias[product] = 0
         product_count[product] = 0
-      self.product_bias[product] += (review['rating'] - self.rating_avg
-          - self.author_bias[author]) 
+      self.product_bias[product] += (review['rating'] - self.rating_avg)
       product_count[product] += 1
     for product in self.product_bias:
       self.product_bias[product] /= float(product_count[product])
@@ -320,7 +333,8 @@ class BETF_Model(object):
         a = self.author_map[author]
         p = self.product_map[product]
         pred = self.overall_mean + self.voter_bias[voter] + \
-            self.review_bias[review] + self.tensor_dot(v, a, p)
+             self.review_a_bias[author] + self.review_p_bias[product] + \
+             self.tensor_dot(v, a, p)
         error = sigmoid(pred) - vote['vote'] 
         der_sig = sigmoid_der1(pred)
         new_V = self.V[v,:] - alpha * (error * der_sig * \
@@ -352,15 +366,6 @@ class BETF_Model(object):
       self.A -= alpha * _BETA * self.A
       self.P -= alpha * _BETA * self.P                                          
       self.S -= alpha * _BETA * self.S 
-      if _UPDATE_BIAS:
-        for voter in self.voter_bias:
-          self.voter_bias[voter] -= alpha * _BETA * self.voter_bias[voter]
-        for author in self.author_bias:
-          self.author_bias[author] -= alpha * _BETA * \
-              self.author_bias[author]
-        for product in self.product_bias:
-          self.product_bias[product] -= alpha * _BETA * \
-              self.product_bias[product]
       value = 0.0
       for vote in votes:
         voter = vote['voter']
@@ -371,7 +376,8 @@ class BETF_Model(object):
         a = self.author_map[author]
         p = self.product_map[product]
         pred = self.overall_mean + self.voter_bias[voter] + \
-            self.review_bias[review] + self.tensor_dot(v, a, p)
+            self.review_a_bias[author] + self.review_p_bias[product] + \
+            self.tensor_dot(v, a, p)
         value += (vote['vote'] - sigmoid(pred)) ** 2 # normalized in (0,1)
       for review in reviews:
         author = review['author']
@@ -395,29 +401,13 @@ class BETF_Model(object):
         for j in xrange(_K):
           for k in xrange(_K):
             value += _BETA * self.S[i,j,k] ** 2
-      if _UPDATE_BIAS:
-        for voter in self.voter_bias:
-          value += _BETA * self.voter_bias[voter] ** 2
-        for author in self.author_bias:
-          value += _BETA * self.author_bias[author] ** 2
-        for product in self.product_bias:
-          value += _BETA * self.product_bias[product] ** 2
       value /= 2.0
-      print '-- Error: %f' % value
-      print '-- Average normalized RMSE: %f' % sqrt(sse / len(votes))
+      print '- Error: %f' % value
+      print '- Average normalized RMSE: %f' % sqrt(sse / len(votes))
       if abs(previous - value) < _TOL:
-        print 'Break'
+        print '-*- Convergence after %d iterations' % (i + 1)
         break
       previous = value
-   # self.mean_voter = mean([self.V[v,:] for v in self.voter_map.itervalues()],
-   #     axis=0)
-   # self.mean_author = mean([self.A[a,:] for v in self.author_map.itervalues()],
-   #     axis=0)
-   # self.mean_product = mean([self.P[p,:] for p in
-   #     self.product_map.itervalues()], axis=0)
-   # self.V = vstack((self.V, self.mean_voter.reshape(1, _K)))
-   # self.A = vstack((self.A, self.mean_author.reshape(1, _K)))
-   # self.P = vstack((self.P, self.mean_product.reshape(1, _K)))
 
   def predict(self, votes, reviews):
     """ Predicts a set of vote examples using previous fitted model.
@@ -425,6 +415,8 @@ class BETF_Model(object):
         Args:
           votes: list of dictionaries, representing votes, to predict
         helpfulness vote value.
+          reviews: list of dictionaries, representing reviews, with review
+        information for those in the training set.
 
         Returns:
           A list of floats with predicted vote values.
@@ -437,31 +429,17 @@ class BETF_Model(object):
       review = vote['review']
       product = reviews[review]['product']
       v = self.voter_map[voter] if voter in self.voter_map else -1
-          # last position contains mean latent vector1
       a = self.author_map[author] if author in self.author_map else -1
       p = self.product_map[product] if product in self.product_map else -1
-      if v != -1 and a != -1 and p != -1 and review in self.review_bias:
+      if v != -1 and a != -1 and p != -1:
         prediction = self.overall_mean + self.voter_bias[voter] + \
-            self.review_bias[review] + self.tensor_dot(v, a, p)
+            self.review_a_bias[author] + self.review_p_bias[product] + \
+            self.tensor_dot(v, a, p)
         pred.append(sigmoid(prediction))
       else:
         pred.append(self.overall_mean)
         cold_start += 1
-     # if v == -1 and a == -1 and p == -1:
-     #   pred.append(self.overall_mean)
-     # else:
-     #   dot = self.overall_mean
-     #   if v != -1:
-     #     dot += self.voter_bias[voter]
-     #   if a != -1:
-     #     dot += self.author_vote_bias[author]
-     #   if p != -1:
-     #     dot += self.product_vote_bias[product]
-     #   dot += self.tensor_dot(v, a, p)
-     #   pred.append(5.0 * sigmoid(dot))
-     # if v == -1 or a == -1 or p == -1:
-     #   cold_start += 1
-    print 'Cold-start ratio: %f' % (float(cold_start) / len(votes))
+    print '-*- Cold-start ratio: %f' % (float(cold_start) / len(votes))
     return pred
 
 
@@ -470,15 +448,15 @@ if __name__ == '__main__':
 
   for i in xrange(NUM_SETS):
     print 'Reading pickles'
-    train = load(open('%s/train-us-%d.pkl' % (_PKL_DIR, i), 'r'))
-    val = load(open('%s/validation-us-%d.pkl' % (_PKL_DIR, i), 'r'))
-    test = load(open('%s/test-us-%d.pkl' % (_PKL_DIR, i), 'r'))
-    reviews = load(open('%s/reviews-us-%d.pkl' % (_PKL_DIR, i), 'r'))
+    train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
+    val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
+    test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
+    reviews = load(open('%s/reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
   
     train_reviews_ids = set([vote['review'] for vote in train])
     train_reviews = {r_id:reviews[r_id] for r_id in train_reviews_ids}
   
-    for j in xrange(1):#REP):
+    for j in xrange(REP):
       print 'Fitting Model'
       model = BETF_Model()
       for v in train:
@@ -504,8 +482,8 @@ if __name__ == '__main__':
       pred = model.predict(val, reviews) 
       pred = [p * 5.0 for p in pred]
       print 'Outputting Validation Prediction'
-      output = open('%s/betf-us-k:%d,l:%f,r:%f,e:%f,i:%d,b:%s-%d-%d.dat' % (_VAL_DIR,
-          _K, _ALPHA, _BETA, _TOL, _ITER, _BIAS, i, j), 'w')
+      output = open('%s/betf-k:%d,l:%f,r:%f,e:%f,i:%d-%d-%d.dat' % (_VAL_DIR,
+          _K, _ALPHA, _BETA, _TOL, _ITER, i, j), 'w')
       for p in pred:
         print >> output, p
       output.close()
@@ -517,8 +495,8 @@ if __name__ == '__main__':
       pred = model.predict(test, reviews) 
       pred = [p * 5.0 for p in pred]
       print 'Outputting Test Prediction'
-      output = open('%s/betf-us-k:%d,l:%f,r:%f,e:%f,i:%d,b:%s-%d-%d.dat' % \
-          (_OUTPUT_DIR, _K, _ALPHA, _BETA, _TOL, _ITER, _BIAS, i, j), 'w')
+      output = open('%s/betf-k:%d,l:%f,r:%f,e:%f,i:%d-%d-%d.dat' % \
+          (_OUTPUT_DIR, _K, _ALPHA, _BETA, _TOL, _ITER, i, j), 'w')
       for p in pred:
         print >> output, p
       output.close()

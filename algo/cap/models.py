@@ -57,11 +57,11 @@ class Value(object):
           None.
     """
     if type(self.shape) is int and self.shape == 1:
-      self.value = uniform(1e-10, 1e-8) # variances cannot be zero
+      self.value = uniform(10e-10, 10e-8)#1e-10, 1e-8) # variances cannot be zero
     elif type(self.shape) is tuple and len(self.shape) == 2 and \
         type(self.shape[0]) is int and type(self.shape[1]) is int and \
         self.shape[0] > 0 and self.shape[1] > 0:
-      self.value = array([[uniform(1e-10, 1e-8) for _ in
+      self.value = array([[uniform(10e-10, 10e-8) for _ in
           range(self.shape[1])] for _ in range(self.shape[0])])
     else:
       raise TypeError('TypeError: shape should be a positive int or a 2-tuple of positive ints.')
@@ -194,22 +194,10 @@ class PredictionVarianceParameter(ScalarVarianceParameter):
           pred += inst.empiric_mean.T.dot(pair_inst.empiric_mean)[0,0]
           for i in xrange(num_samples):
             pred_samples[i] += inst.samples[i].T.dot(pair_inst.samples[i])[0,0]
-          # V(XY) = V(X)V(Y) + V(X)E(Y)^2 + V(Y)E(X)^2
-          # dot product is the sum of variable products
-          # dimensions are considered to be uncorrelated
-         # dot_var = 0
-         # for i in xrange(const.K):
-         #   var_x = inst.empiric_var.reshape(-1).tolist()[i]
-         #   var_y = pair_inst.empiric_var.reshape(-1).tolist()[i]
-         #   dot_var += var_x * var_y
-         #   dot_var += var_x * pair_inst.empiric_mean.reshape(-1).tolist()[i]**2
-         #   dot_var += var_y * inst.empiric_mean.reshape(-1).tolist()[i]**2
-         # var_sum += dot_var
         elif inst:
           pred += inst.empiric_mean
           for i in xrange(num_samples):
             pred_samples[i] += inst.samples[i]
-         # var_sum += inst.empiric_var
       var_sum += std(pred_samples, ddof=1) ** 2
       sse += (truth - pred) ** 2
     self.update((float) (sse + var_sum) / size)
@@ -387,14 +375,6 @@ class InteractionScalarParameter(Parameter):
           variable_group, self.value)
       self.update(new_value) 
 
-#  def mse(self, value, variable_group):
-#    mse = 0.0
-#    for variable in variable_group.iter_variables():
-#      for sample in variable.samples:
-#        mse += (sample - sigmoid(value.T.dot(variable.features)[0,0])) ** 2
-#    mse /= variable_group.size * variable.num_samples
-#    return mse
-
   def get_derivative_1(self, value, variable_group):
     """ Gets the first derivative of the expectation with respect to the
         parameter.
@@ -420,9 +400,7 @@ class InteractionScalarParameter(Parameter):
       dot = value.T.dot(f)[0,0]
       sig = sigmoid(dot)
       sig1 = sigmoid_der1(dot)
-     # for sample in variable.samples:
       der += (min(variable.value, 1.0) - sig) * sig1 * f
-   # num_samples = variable_group.get_num_samples()
     der *= 1.0 / (variable_group.var_param.value)# * num_samples)
     return der
 
@@ -454,10 +432,8 @@ class InteractionScalarParameter(Parameter):
       sig2 = sigmoid_der2(dot)
       if variable.feat_matrix is None:
         variable.feat_matrix = f.dot(f.T)
-     # for sample in variable.samples:
       der += ((min(variable.value, 1.0) - sig) * sig2 - sig1 * sig1) * variable.feat_matrix 
-   # num_samples = variable_group.get_num_samples()
-    der *= 1.0 / (variable_group.var_param.value)# * num_samples)
+    der *= 1.0 / (variable_group.var_param.value)
     return der 
 
 
@@ -574,26 +550,6 @@ class Variable(Value):
     self.cond_var = None
     self.var_dot = None
   
-#  def generate_dict(self, votes):
-#    """ Generates a lightweight dictionary version of this Variable.
-#
-#        Observation:
-#          - Only fields needed for Gibbs Sampling are used.
-#
-#        Args:
-#          votes: list of votes, indexed by id.
-#
-#        Returns:
-#          A dictionary with certain features a Variable object.
-#    """
-#    d_var = {}
-#    d_var['related_votes'] = self.get_related_votes(votes)
-#    d_var['num_votes'] = len(d_var['related_votes'])
-#    d_var['type'] = self.get_type() 
-#    if d_var['type'] == 'EntityArray':
-#      d_var['last_matrix'] = None
-#    return d_var
-
   def get_related_votes(self, votes):
     """ Gets related votes' indices of a given Variable.
         
@@ -776,17 +732,6 @@ class EntityScalarVariable(ScalarVariable):
     mean = self.cond_var * (rest_term + self.var_dot)
     return mean, self.cond_var
 
-#  def get_type(self):
-#    """ Gets the specific type of this Varible.
-#      
-#        Args:
-#          None.
-#
-#        Returns:
-#          A string with the name of this type.
-#    """
-#    return 'EntityScalar'
-
 
 class EntityArrayVariable(ArrayVariable):
   """ Class defining an array latent variable associated to an entity.
@@ -864,17 +809,6 @@ class EntityArrayVariable(ArrayVariable):
     super(EntityArrayVariable, self).reset_samples()
     self.inv_var = None
   
-#  def get_type(self):
-#    """ Gets the specific type of this Varible.
-#      
-#        Args:
-#          None.
-#
-#        Returns:
-#          A string with the name of this type.
-#    """
-#    return 'EntityArray'
-
 
 class InteractionScalarVariable(ScalarVariable):
   """ Class defining a latent variable which is scalar and associated to an
@@ -941,17 +875,6 @@ class InteractionScalarVariable(ScalarVariable):
     """
     return [i for i, vote in enumerate(votes) if vote[self.e_type[0]] ==
         self.entity_id[0] and vote[self.e_type[1]] == self.entity_id[1]]
-  
-#  def get_type(self):
-#    """ Gets the specific type of this Varible.
-#      
-#        Args:
-#          None.
-#
-#        Returns:
-#          A string with the name of this type.
-#    """
-#    return 'InteractionScalar'
 
 
 class Group(object):
@@ -1081,25 +1004,6 @@ class Group(object):
           None. The pair_name field is altered on this object.
     """
     self.pair_name = pair_name
-
-#  def generate_dict(self):
-#    """ Generates a lightweight dictionary version of this Group.
-#
-#        Observation:
-#          - Only fields needed for Gibbs Sampling are used.
-#
-#        Args:
-#          votes: list of votes, indexed by id.
-#
-#        Returns:
-#          A dictionary with certain features a Variable object.
-#    """
-#    d_group = {}
-#    d_group['_id'] = str(self.name)
-#    d_group['pair_name'] = self.pair_name
-#    d_group['entity_type'] = self.e_type
-#    d_group['shape'] = self.shape
-#    return d_group
 
 
 class EntityScalarGroup(Group):

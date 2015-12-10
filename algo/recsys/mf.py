@@ -120,11 +120,20 @@ class MF_Model(object):
     self.user_map = {u:i for i, u in enumerate(users)}
     self.author_map = {r:i for i, r in enumerate(authors)}
     seed(int(time() * 1000000) % 1000000)
-    self.U = uniform(1e-10, 1e-8, (len(users), _K))
-    self.A = uniform(1e-10, 1e-8, (len(authors), _K))
+    self.U = uniform(10e-10, 10e-8, (len(users), _K))
+    self.A = uniform(10e-10, 10e-8, (len(authors), _K))
     self.overall_mean = float(sum([v['vote'] for v in votes])) / len(votes)
 
   def _calculate_bias(self, votes):
+    """ Calculate initial bias value (and final for static bias) of entities
+        regarding vote (helpfulness) value.
+    
+        Args:
+          votes: list of vote dictionaries (the training set).
+
+        Returns:
+          None. Instance fields are updated.
+    """
     self.user_bias = {}
     user_count = {}
     self.author_bias = {}
@@ -232,7 +241,15 @@ class MF_Model(object):
     return pred
 
 
-if __name__ == '__main__':
+def main():
+  """ Predicts helpfulness votes using MF.
+
+      Args:
+        None.
+
+      Returns:
+        None. Results are printed to files.
+  """
   load_args()
   
   for i in xrange(NUM_SETS):
@@ -250,14 +267,12 @@ if __name__ == '__main__':
 
       print 'Calculating Predictions'
       pred = model.predict(train)
-      print pred[:10] 
       print 'TRAINING ERROR'
       print '-- RMSE: %f' % calculate_rmse(pred, truth)
       print '-- nDCG@%d: %f' % (RANK_SIZE, calculate_avg_ndcg(train, reviews,
           pred, truth, RANK_SIZE))
       
       pred = model.predict(val) 
-      print pred[:10] 
       print 'Outputting validation prediction'
       output = open('%s/mf-%s-%d-%d.dat' % (_VAL_DIR, _CONF_STR, i, j), 'w')
       for p in pred:
@@ -265,9 +280,11 @@ if __name__ == '__main__':
       output.close()
       
       pred = model.predict(test) 
-      print pred[:10] 
       print 'Outputting testing prediction'
       output = open('%s/mf-%s-%d-%d.dat' % (_OUTPUT_DIR, _CONF_STR, i, j), 'w')
       for p in pred:
         print >> output, p
       output.close()
+
+if __name__ == '__main__':
+  main()

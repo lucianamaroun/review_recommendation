@@ -14,7 +14,6 @@
     <gibbs_samples> is an integer with number of gibbs samples in each EM 
       iteration,
     <burn_in> is the number of initial discarded samples in each sampling,
-    <scale> defines whether to perform feature scaling or not,
     <feature_set> is in the set ['www', 'cap', 'all'].
 """
 
@@ -35,7 +34,6 @@ _K = 5
 _ITER = 10
 _SAMPLES = 100
 _BURN_IN = 10
-_SCALE = False
 _FEAT = 'cap'
 _DATA_DIR = 'out/data'
 _TRAIN_DIR = 'out/train'
@@ -68,20 +66,17 @@ def load_args():
     elif argv[i] == '-b':
       global _BURN_IN
       _BURN_IN = int(argv[i+1])
-    elif argv[i] == '-s' and argv[i+1] in ['y', 'n']:
-      global _SCALE
-      _SCALE = True if argv[i+1] == 'y' else False
     elif argv[i] == '-f' and argv[i+1] in ['www', 'cap', 'all']:
       global _FEAT
       _FEAT = argv[i+1]
     else:
       print ('Usage: python -m algo.cf.rlfm [-k <k>] [-i <iterations>] '
-          '[-g <gibb_samples>] [-b <burn_in>] [-s <scale>] [-f <feature_type>]')
+          '[-g <gibb_samples>] [-b <burn_in>] [-f <feature_type>]')
       exit()
     i = i + 2
   global _CONF_STR
-  _CONF_STR = 'k:%d,i:%d,g:%d,b:%d,s:%s,f:%s' % (_K, _ITER, _SAMPLES, _BURN_IN,
-      'y' if _SCALE else 'n', _FEAT)
+  _CONF_STR = 'k:%d,i:%d,g:%d,b:%d,f:%s' % (_K, _ITER, _SAMPLES, _BURN_IN,
+      _FEAT)
 
 
 def model_dyad(votes, sim, conn, avg_sim, avg_conn):
@@ -304,18 +299,17 @@ def run():
     X_user_train, user_train_key, X_user_test, user_test_key = \
         model_users(users, train_users, test_users, avg_user)
 
-    if _SCALE:
-      print 'Scaling'
-      dyad_scaler = fit_scaler('minmax', X_train)
-      X_train = scale_features(dyad_scaler, X_train)
-      X_val = scale_features(dyad_scaler, X_val)
-      X_test = scale_features(dyad_scaler, X_test)
-      item_scaler = fit_scaler('minmax', X_item_train)
-      X_item_train = scale_features(item_scaler, X_item_train)
-      X_item_test = scale_features(item_scaler, X_item_test)
-      user_scaler = fit_scaler('minmax', X_user_train)
-      X_user_train = scale_features(user_scaler, X_user_train)
-      X_user_test = scale_features(user_scaler, X_user_test)
+    print 'Scaling'
+    dyad_scaler = fit_scaler('minmax', X_train)
+    X_train = scale_features(dyad_scaler, X_train)
+    X_val = scale_features(dyad_scaler, X_val)
+    X_test = scale_features(dyad_scaler, X_test)
+    item_scaler = fit_scaler('minmax', X_item_train)
+    X_item_train = scale_features(item_scaler, X_item_train)
+    X_item_test = scale_features(item_scaler, X_item_test)
+    user_scaler = fit_scaler('minmax', X_user_train)
+    X_user_train = scale_features(user_scaler, X_user_train)
+    X_user_test = scale_features(user_scaler, X_user_test)
     X_item = vstack((X_item_train, X_item_test))
     item_key = item_train_key + item_test_key
     X_user = vstack((X_user_train, X_user_test))
@@ -330,13 +324,11 @@ def run():
 
     for j in xrange(REP):
       print 'Fitting model'
-      print getoutput(('Rscript lib/rlfm/rlfm_fit.R %d %d %d %d %s %s %d %d '
-          '%s') % (_K, _ITER, _SAMPLES, _BURN_IN, 'y' if _SCALE else 'n',
-          _FEAT, i, j, _DATA_DIR))
+      print getoutput(('Rscript lib/rlfm/rlfm_fit.R %d %d %d %d %s %d %d '
+          '%s') % (_K, _ITER, _SAMPLES, _BURN_IN, _FEAT, i, j, _DATA_DIR))
 
-      print getoutput('Rscript lib/rlfm/rlfm_predict.R %d %d %d %d %s %s %d %d '
-          '%s train' % (_K, _ITER, _SAMPLES, _BURN_IN, 'y' if _SCALE else 'n',
-          _FEAT, i, j, _DATA_DIR))
+      print getoutput('Rscript lib/rlfm/rlfm_predict.R %d %d %d %d %s %d %d '
+          '%s train' % (_K, _ITER, _SAMPLES, _BURN_IN, _FEAT, i, j, _DATA_DIR))
 
       predfile = open('%s/rlfm-%s-%d-%d.dat' % (_TRAIN_DIR, _CONF_STR, i,
           j), 'r')
@@ -351,14 +343,12 @@ def run():
           truth, RANK_SIZE))
 
       print 'Predicting in validation'
-      print getoutput('Rscript lib/rlfm/rlfm_predict.R %d %d %d %d %s %s %d %d '
-          '%s val' % (_K, _ITER, _SAMPLES, _BURN_IN, 'y' if _SCALE else 'n',
-          _FEAT, i, j, _DATA_DIR))
+      print getoutput('Rscript lib/rlfm/rlfm_predict.R %d %d %d %d %s %d %d '
+          '%s val' % (_K, _ITER, _SAMPLES, _BURN_IN, _FEAT, i, j, _DATA_DIR))
 
       print 'Predicting in test'
-      print getoutput('Rscript lib/rlfm/rlfm_predict.R %d %d %d %d %s %s %d %d '
-          '%s test' % (_K, _ITER, _SAMPLES, _BURN_IN, 'y' if _SCALE else 'n',
-          _FEAT, i, j, _DATA_DIR))
+      print getoutput('Rscript lib/rlfm/rlfm_predict.R %d %d %d %d %s %d %d '
+          '%s test' % (_K, _ITER, _SAMPLES, _BURN_IN, _FEAT, i, j, _DATA_DIR))
 
 
 if __name__ == '__main__':

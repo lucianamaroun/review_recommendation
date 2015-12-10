@@ -7,19 +7,18 @@
     Usage:
     $ python -m algo.cap.main [-k <latent_dimensions>] [-i <iterations>]
       [-g <gibbs_samples>] [-b <burn_in>] [-n <nr_iterations>]
-      [-t <nr_tolerance>] [-l <nr_learning_rate>] [-a <eta>] [-s <scale>]
+      [-t <nr_tolerance>] [-l <nr_learning_rate>] [-a <eta>] 
     where
     <latent_dimensions> is an integer with the number of latent dimensions,
     <iterations> is an integer with number of EM iterations,
     <gibbs_samples> is an integer with number of gibbs samples in each EM 
       iteration,
     <burn_in> is an integer with number of first samples ignored in Gibbs
-      Sampling,
+      Sampling (not present in original definition),
     <nr_iterations> is an integer with number of newton-raphson iterations,
     <nr_tolerance> is a float with newton-raphson convergence tolerance,
     <nr_learning_rate> is a float with newton-raphson learning rate,
-    <eta> is a float constant used in OLS for easier inversion,
-    <scale> whether scale features, either 'y' for yes or 'n' for no. 
+    <eta> is a float constant used in OLS for easier inversion.
 """
 
 
@@ -46,7 +45,6 @@ from util.scaling import fit_scaler, scale_features
 _OUTPUT_DIR = 'out/test'
 _VAL_DIR = 'out/val'
 _PKL_DIR = 'out/pkl'
-_SCALE = True
 _CONF_STR = None
 
 
@@ -77,20 +75,17 @@ def load_args():
       const.NR_STEP = float(argv[i+1])
     elif argv[i] == '-a':
       const.ETA = float(argv[i+1])
-    elif argv[i] == '-s' and argv[i+1] in ['y', 'n']:
-      global _SCALE
-      _SCALE = True if argv[i+1] == 'y' else False 
     else:
       print ('Usage: $ python -m algo.cap.main '
           '[-k <latent_dimensions>] [-i <em_iterations>] [-s <samples>] '
           '[-b <burn_in>] [-n <nr_iterations>] [-t <nr_tolerance>] '
-          '[-l <nr_learning_rate>] [-a <eta>] [-s <scale>]')
+          '[-l <nr_learning_rate>] [-a <eta>]')
       exit()
     i = i + 2
   global _CONF_STR
-  _CONF_STR = 'k:%d,i:%d,g:%d,b:%d,n:%d,t:%f,l:%f,a:%f,s:%s' % (const.K,
+  _CONF_STR = 'k:%d,i:%d,g:%d,b:%d,n:%d,t:%f,l:%f,a:%f' % (const.K,
       const.EM_ITER[0], const.SAMPLES[0], const.BURN_IN[0], const.NR_ITER,
-      const.NR_TOL, const.NR_STEP, const.ETA, 'y' if _SCALE else 'n')
+      const.NR_TOL, const.NR_STEP, const.ETA)
 
 
 def create_variable_groups():
@@ -291,12 +286,11 @@ def main():
     f_train = map_features(train, reviews, users, sim, conn, trusts)
     f_val = map_features(val, reviews, users, sim, conn, trusts)
     f_test = map_features(test, reviews, users, sim, conn, trusts)
-    if _SCALE:
-      scaler = fit_cap_scaler(f_train)
-      f_train = scale_cap_features(scaler, f_train)
-      f_val = scale_cap_features(scaler, f_val)
-      f_test = scale_cap_features(scaler, f_test)
-    for j in xrange(REP):
+    scaler = fit_cap_scaler(f_train)
+    f_train = scale_cap_features(scaler, f_train)
+    f_val = scale_cap_features(scaler, f_val)
+    f_test = scale_cap_features(scaler, f_test)
+    for j in xrange(1):#REP):
       print 'Creating variables'
       var_groups = create_variable_groups()
       populate_variables(var_groups, train, users, trusts, f_train)

@@ -4,13 +4,10 @@
     Use of regression methods for predicting relevance of reviews for users.
 
     Usage:
-      $ python -m algo.cb.lr [-r <reg_weight>] [-s <scale>] [-f <feature_set>]
+      $ python -m algo.cb.lr [-r <reg_weight>] [-f <feature_set>]
         [-b <bias>]
     where:
     <reg_weight> is a float with the regularization weight, 
-    <scale> is the type of feature scaling in the set ['all', 'up'] (the first
-      means one scaler for all and the second, one scaler for each user and 
-      product pair for user and product dependent features),
     <feature_set> is in the set ['www', 'cap', 'all'], and 
     <bias> is either 'y' or 'n'.
 """
@@ -36,7 +33,6 @@ _VAL_DIR = 'out/val'
 _PKL_DIR = 'out/pkl'
 _FEAT_TYPE = 'cap'
 _BETA = 0.01
-_SCALE = 'all'
 _BIAS = False
 
 
@@ -54,9 +50,6 @@ def load_args():
     if argv[i] == '-r':
       global _BETA
       _BETA = float(argv[i+1])
-    elif argv[i] == '-s' and argv[i+1] in ['all', 'up']:
-      global _SCALE 
-      _SCALE = argv[i+1]
     elif argv[i] == '-f' and argv[i+1] in ['www', 'cap', 'all']:
       global _FEAT_TYPE
       _FEAT_TYPE = argv[i+1]
@@ -126,7 +119,7 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
 
 
 def main():
-  """ Predicts votes by applying a regressor technique.
+  """ Predicts votes by applying a LR regressor technique.
 
       Args:
         None.
@@ -161,17 +154,10 @@ def main():
     X_test, _, qid_test = generate_input(reviews, users, sim, conn, test, 
         avg_user, avg_sim, avg_conn)
 
-    if _SCALE == 'all':
-      scaler = fit_scaler('minmax', X_train)
-      X_train = scale_features(scaler, X_train)
-      X_val = scale_features(scaler, X_val)
-      X_test = scale_features(scaler, X_test)
-    else:
-      qid_dep_size = len(sim.itervalues().next()) + len(conn.itervalues().next())
-      scaler = fit_scaler_by_query('minmax', X_train, qid_train, qid_dep_size)
-      X_train = scale_features(scaler, X_train, qid_train, qid_dep_size)
-      X_val = scale_features(scaler, X_val, qid_val, qid_dep_size)
-      X_test = scale_features(scaler, X_test, qid_test, qid_dep_size)
+    scaler = fit_scaler('minmax', X_train)
+    X_train = scale_features(scaler, X_train)
+    X_val = scale_features(scaler, X_val)
+    X_test = scale_features(scaler, X_test)
 
     model = Ridge(alpha=_BETA) 
         # for standardized notation across algorithms, we consider alpha to be 
@@ -189,8 +175,8 @@ def main():
     pred = model.predict(X_val)
     if _BIAS:
       bias.add_bias(val, reviews, pred)
-    output = open('%s/lr-r:%f,s:%s,f:%s,b:%s-%d-%d.dat' % (_VAL_DIR, _BETA,
-        _SCALE, _FEAT_TYPE, 'y' if _BIAS else 'n', i, 0), 'w')
+    output = open('%s/lr-r:%f,f:%s,b:%s-%d-%d.dat' % (_VAL_DIR, _BETA,
+        _FEAT_TYPE, 'y' if _BIAS else 'n', i, 0), 'w')
     for p in pred:
       print >> output, p
     output.close()
@@ -198,8 +184,8 @@ def main():
     pred = model.predict(X_test)
     if _BIAS:
       bias.add_bias(test, reviews, pred)
-    output = open('%s/lr-r:%f,s:%s,f:%s,b:%s-%d-%d.dat' % (_OUTPUT_DIR, _BETA,
-        _SCALE, _FEAT_TYPE, 'y' if _BIAS else 'n', i, 0), 'w')
+    output = open('%s/lr-r:%f,f:%s,b:%s-%d-%d.dat' % (_OUTPUT_DIR, _BETA,
+        _FEAT_TYPE, 'y' if _BIAS else 'n', i, 0), 'w')
     for p in pred:
       print >> output, p
     output.close()

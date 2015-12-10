@@ -6,7 +6,7 @@
     Usage:
       $ python -m algo.cb.gbrt [-l <learning_rate>] [-t <num_trees>] 
         [-d <max_depth>] [-e <loss_func>] [-p <subsample>] [-m <max_feat>]
-        [-s <scale>] [-f <feature_set>] [-b <bias>]
+        [-f <feature_set>] [-b <bias>]
     where:
     <learning_rate> is a float with the gradient update,
     <num_trees> is an integer with the number of decision trees used, 
@@ -17,9 +17,6 @@
       randomization,
     <max_feat> is an integer with the number of features used in each tree
       building, allowing randomization,
-    <scale> is the type of feature scaling in the set ['all', 'up'] (the first
-      means one scaler for all and the second, one scaler for each user and 
-      product pair for user and product dependent features),
     <feature_set> is in the set ['www', 'cap', 'all'], and 
     <bias> is either 'y' or 'n'.
 """
@@ -50,7 +47,6 @@ _MAX_D = 3
 _LOSS = 'ls' 
 _SUBSAMPLE = 1.0
 _MAX_F = None
-_SCALE = 'all'
 _FEAT_TYPE = 'all'
 _BIAS = False
 
@@ -84,9 +80,6 @@ def load_args():
     elif argv[i] == '-m':
       global _MAX_F
       _MAX_F = int(argv[i+1])
-    elif argv[i] == '-s' and argv[i+1] in ['all', 'up']:
-      global _SCALE 
-      _SCALE = argv[i+1]
     elif argv[i] == '-f' and argv[i+1] in ['www', 'cap', 'all']:
       global _FEAT_TYPE
       _FEAT_TYPE = argv[i+1]
@@ -98,7 +91,7 @@ def load_args():
       print argv[i+1]
       print ('Usage $ python -m algo.reg.gbrt [-l <learning_rate>]'
           '[-t <num_trees>] [-d <max_depth>] [-e <loss_func>] [-p <subsample>]'
-          '[-m <max_feat>] [-s <scale>] [-f <feature_set>] [-b <bias>]')
+          '[-m <max_feat>] [-f <feature_set>] [-b <bias>]')
       exit()
     i = i + 2
 
@@ -159,7 +152,7 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
 
 
 def main():
-  """ Predicts votes by applying a regressor technique.
+  """ Predicts votes by applying a GBRT regressor technique.
 
       Args:
         None.
@@ -194,17 +187,10 @@ def main():
     X_test, _, qid_test = generate_input(reviews, users, sim, conn, test, 
         avg_user, avg_sim, avg_conn)
 
-    if _SCALE == 'all':
-      scaler = fit_scaler('minmax', X_train)
-      X_train = scale_features(scaler, X_train)
-      X_val = scale_features(scaler, X_val)
-      X_test = scale_features(scaler, X_test)
-    else:
-      qid_dep_size = len(sim.itervalues().next()) + len(conn.itervalues().next())
-      scaler = fit_scaler_by_query('minmax', X_train, qid_train, qid_dep_size)
-      X_train = scale_features(scaler, X_train, qid_train, qid_dep_size)
-      X_val = scale_features(scaler, X_val, qid_val, qid_dep_size)
-      X_test = scale_features(scaler, X_test, qid_test, qid_dep_size)
+    scaler = fit_scaler('minmax', X_train)
+    X_train = scale_features(scaler, X_train)
+    X_val = scale_features(scaler, X_val)
+    X_test = scale_features(scaler, X_test)
 
     for j in xrange(REP):
       model = GradientBoostingRegressor(loss=_LOSS, learning_rate=_ALPHA,
@@ -223,8 +209,8 @@ def main():
       pred = model.predict(X_val)
       if _BIAS:
         bias.add_bias(val, reviews, pred)
-      output = open('%s/gbrt-l:%f,t:%d,d:%d,e:%s,p:%f,m:%s,s:%s,f:%s,b:%s-%d-%d.dat' % 
-          (_VAL_DIR, _ALPHA, _T, _MAX_D, _LOSS, _SUBSAMPLE, str(_MAX_F), _SCALE, 
+      output = open('%s/gbrt-l:%f,t:%d,d:%d,e:%s,p:%f,m:%s,f:%s,b:%s-%d-%d.dat' % 
+          (_VAL_DIR, _ALPHA, _T, _MAX_D, _LOSS, _SUBSAMPLE, str(_MAX_F), 
           _FEAT_TYPE, 'y' if _BIAS else 'n', i, j), 'w')
       for p in pred:
         print >> output, p
@@ -233,9 +219,9 @@ def main():
       pred = model.predict(X_test)
       if _BIAS:
         bias.add_bias(test, reviews, pred)
-      output = open('%s/gbrt-l:%f,t:%d,d:%d,e:%s,p:%f,m:%s,s:%s,f:%s,b:%s-%d-%d.dat' % 
+      output = open('%s/gbrt-l:%f,t:%d,d:%d,e:%s,p:%f,m:%s,f:%s,b:%s-%d-%d.dat' % 
           (_OUTPUT_DIR, _ALPHA, _T, _MAX_D, _LOSS, _SUBSAMPLE, str(_MAX_F),
-          _SCALE, _FEAT_TYPE, 'y' if _BIAS else 'n', i, j), 'w')
+          _FEAT_TYPE, 'y' if _BIAS else 'n', i, j), 'w')
       for p in pred:
         print >> output, p
       output.close()

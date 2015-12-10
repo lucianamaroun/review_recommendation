@@ -119,6 +119,22 @@ def map_users_conn_features(users_conn, avg_conn):
 
 
 def map_features(votes, reviews, users, users_sim, users_conn, trusts):
+  """ Maps all features related to each vote, in the same order.
+
+      Args:
+        votes: list of vote dictionaries.
+        reviews: dictionary of review dictionaries indexed by review id.
+        users: dictionary of user dictionaries indexed by user id.
+        users_sim: dictionary of user similarity dictionaries indexed by a
+          2-tuple of user ids.
+        users_conn: dictionary of user connection dictionaries indexed by a
+          2-tuple of user ids.
+        trusts: networkx DiGraph with trust network.
+
+      Returns:
+        A dictionary of features indexed by related entity name (e.g.: voter)
+      and containing a list with a feature array for each vote.
+  """
   avg_user = compute_avg_user(users)
   avg_sim = compute_avg_model(users_sim)
   avg_conn = compute_avg_model(users_conn)
@@ -138,10 +154,7 @@ def map_features(votes, reviews, users, users_sim, users_conn, trusts):
         sim = users_sim[(a_id, v_id)]
         sim_feat = map_users_sim_features(sim, avg_sim)
         features['sim'].append(sim_feat)
-     # sim = users_sim[(a_id, v_id)] if (a_id, v_id) in users_sim else avg_sim
     if v_id in trusts and a_id in trusts[v_id]:
-     # conn = users_conn[(a_id, v_id)] if (a_id, v_id) in users_conn else \
-     #     avg_conn
       if (a_id, v_id) in users_conn:
         conn = users_conn[(a_id, v_id)]
         conn_feat = map_users_conn_features(conn, avg_conn)

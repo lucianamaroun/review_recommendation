@@ -5,14 +5,11 @@
     reviews.
 
     Usage:
-      $ python -m algo.cb.svmrank [-c <penalty>] [-a <algorithm>] [-s <scale>]
+      $ python -m algo.cb.svmrank [-c <penalty>] [-a <algorithm>] 
         [-f <feature_set>] [-b <bias>] [-k <kernel>]
     where:
     <penalty> is a float which weights the error term,
     <algorithms> is the learning algorithm, in the set [1, 2, 3, 4],
-    <scale> is the type of feature scaling in the set ['all', 'up'] (the first
-      means one scaler for all and the second, one scaler for each user and 
-      product pair for user and product dependent features),
     <feature_set> is in the set ['www', 'cap', 'all'], and 
     <bias> is either 'y' or 'n',
     <kernel> kernel id, 0 for linear, 1 for polynomial, 2 for rbf and 3 for
@@ -36,7 +33,6 @@ from util.scaling import fit_scaler, fit_scaler_by_query, scale_features
 
 _C = 0.01
 _ALGO = 3
-_SCALE = 'all'
 _FEAT_TYPE = 'cap'
 _BIAS = False
 _KERNEL = '0' 
@@ -65,9 +61,6 @@ def load_args():
     elif argv[i] == '-a' and argv[i+1] in ['0', '1', '2', '3', '4']:
       global _ALGO
       _ALGO = argv[i+1] 
-    elif argv[i] == '-s' and argv[i+1] in ['all', 'up']:
-      global _SCALE 
-      _SCALE = argv[i+1]
     elif argv[i] == '-f' and argv[i+1] in ['www', 'cap', 'all']:
       global _FEAT_TYPE
       _FEAT_TYPE = argv[i+1]
@@ -76,16 +69,15 @@ def load_args():
       _BIAS = True if argv[i+1] == 'y' else False
     elif argv[i] == '-k':
       global _KERNEL
-      print _KERNEL
       _KERNEL = argv[i+1] 
     else:
       print ('Usage: $ python -m algo.cb.svmrank [-c <penalty>] '
-          '[-a <algorithm>] [-s <scale>] [-f <feature_set>] [-b <bias>] '
+          '[-a <algorithm>] [-f <feature_set>] [-b <bias>] '
           '[-k <kernel>]')
       exit()
     i = i + 2
   global _CONF_STR
-  _CONF_STR = 'c:%f,a:%s,k:%s,s:%s,f:%s,b:%s' % (_C, _ALGO, _KERNEL, _SCALE, _FEAT_TYPE,
+  _CONF_STR = 'c:%f,a:%s,k:%s,f:%s,b:%s' % (_C, _ALGO, _KERNEL, _FEAT_TYPE,
       'y' if _BIAS else 'n')
 
 
@@ -164,20 +156,20 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
         example.append(avg_user[feature]) 
       else:
         example.append(author[feature])
-    voter = users[vote['voter']] if vote['voter'] in users else avg_user
-    av = (author['id'], voter['id'])
-    u_sim = sim[av] if av in sim else avg_sim
-    for feature in SIM_FEATS[_FEAT_TYPE]:
-      if isnan(u_sim[feature]):
-        example.append(avg_sim[feature]) 
-      else:
-        example.append(u_sim[feature]) 
-    u_conn = conn[av] if av in conn else avg_conn
-    for feature in CONN_FEATS[_FEAT_TYPE]:
-      if isnan(u_conn[feature]):
-        example.append(avg_conn[feature]) 
-      else:
-        example.append(u_conn[feature]) 
+   # voter = users[vote['voter']] if vote['voter'] in users else avg_user
+   # av = (author['id'], voter['id'])
+   # u_sim = sim[av] if av in sim else avg_sim
+   # for feature in SIM_FEATS[_FEAT_TYPE]:
+   #   if isnan(u_sim[feature]):
+   #     example.append(avg_sim[feature]) 
+   #   else:
+   #     example.append(u_sim[feature]) 
+   # u_conn = conn[av] if av in conn else avg_conn
+   # for feature in CONN_FEATS[_FEAT_TYPE]:
+   #   if isnan(u_conn[feature]):
+   #     example.append(avg_conn[feature]) 
+   #   else:
+   #     example.append(u_conn[feature]) 
     X.append(example)
     y.append(vote['vote'])
     qid.append(int(vote['voter']))
@@ -185,7 +177,7 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
 
 
 def predict():
-  """ Predicts votes by applying a regressor technique.
+  """ Predicts votes by applying RankSVM technique.
 
       Args:
         None.
@@ -221,17 +213,10 @@ def predict():
     X_test, _, qid_test = generate_input(reviews, users, sim, conn, test, 
         avg_user, avg_sim, avg_conn)
     
-    if _SCALE == 'all':
-      scaler = fit_scaler('minmax', X_train)
-      X_train = scale_features(scaler, X_train)
-      X_val = scale_features(scaler, X_val)
-      X_test = scale_features(scaler, X_test)
-    else:
-      qid_dep_size = len(sim.itervalues().next()) + len(conn.itervalues().next())
-      scaler = fit_scaler_by_query('minmax', X_train, qid_train, qid_dep_size)
-      X_train = scale_features(scaler, X_train, qid_train, qid_dep_size)
-      X_val = scale_features(scaler, X_val, qid_val, qid_dep_size)
-      X_test = scale_features(scaler, X_test, qid_test, qid_dep_size)
+    scaler = fit_scaler('minmax', X_train)
+    X_train = scale_features(scaler, X_train)
+    X_val = scale_features(scaler, X_val)
+    X_test = scale_features(scaler, X_test)
 
     print 'Outputting model'
     outfile = open('%s/rank_train-%s-%d.dat' % (_DATA_DIR, _CONF_STR, i), 'w')
@@ -245,7 +230,7 @@ def predict():
     outfile.close()
 
     print 'Fitting model'
-    print getoutput(('lib/svm_rank/svm_rank_learn -c %f -w %s -t %s -d 2 '
+    print getoutput(('lib/svm_rank/svm_rank_learn -c %f -w %s -t %s '
         '%s/rank_train-%s-%d.dat %s/rank_model-%s-%d-0.dat') % (_C, _ALGO,
         _KERNEL, _DATA_DIR, _CONF_STR, i, _MODEL_DIR, _CONF_STR, i))
     print getoutput(('lib/svm_rank/svm_rank_classify ' 

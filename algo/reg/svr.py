@@ -5,15 +5,12 @@
 
     Usage:
       $ python -m algo.cb.lr [-c <penalty>] [-k <kernel>] [-e <epsilon>] 
-          [-s <scale>] [-f <feature_set>] [-b <bias>]
+          [-f <feature_set>] [-b <bias>]
     where:
     <penalty> is a float which weights the error term,
     <kernel> is in the set ['rbf', 'linear', 'sigmoid', 'poly'],
     <epsilon> is the error tolerance which are not considered until this
       distance,
-    <scale> is the type of feature scaling in the set ['all', 'up'] (the first
-      means one scaler for all and the second, one scaler for each user and 
-      product pair for user and product dependent features),
     <feature_set> is in the set ['www', 'cap', 'all'], and 
     <bias> is either 'y' or 'n'.
 """
@@ -41,7 +38,6 @@ _BETA = 0.01
 _KERNEL = 'linear'
 _C = 0.01
 _EPS = 0.01
-_SCALE = 'all'
 _BIAS = False
 
 
@@ -59,15 +55,13 @@ def load_args():
     if argv[i] == '-c':
       global _C
       _C = float(argv[i+1])
-    elif argv[i] == '-k' and argv[i+1] in ['linear', 'rbf', 'poly', 'rbf']:
+    elif argv[i] == '-k' and argv[i+1] in ['linear', 'rbf', 'poly', 'rbf',
+        'sigmoid']:
       global _KERNEL 
       _KERNEL = argv[i+1]
     elif argv[i] == '-e':
-      global _EPSILON
-      _EPSILON = float(argv[i+1])
-    elif argv[i] == '-s' and argv[i+1] in ['all', 'up']:
-      global _SCALE
-      SCALE = argv[i+1]
+      global _EPS
+      _EPS = float(argv[i+1])
     elif argv[i] == '-f' and argv[i+1] in ['www', 'cap', 'all']:
       global _FEAT_TYPE
       _FEAT_TYPE = argv[i+1]
@@ -76,7 +70,7 @@ def load_args():
       _BIAS = True if argv[i+1] == 'y' else False
     else:
       print ('Usage: $ python -m algo.cb.svr [-c <penalty>] [-k <kernel>] '
-          '[-e <epsilon>] [-s <scale>] [-f <feature_set>] [-b <bias>]')
+          '[-e <epsilon>] [-f <feature_set>] [-b <bias>]')
       exit()
     i = i + 2
 
@@ -137,7 +131,7 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
 
 
 def predict():
-  """ Predicts votes by applying a regressor technique.
+  """ Predicts votes by applying a SVR regressor technique.
 
       Args:
         None.
@@ -172,17 +166,10 @@ def predict():
     X_test, _, qid_test = generate_input(reviews, users, sim, conn, test, 
         avg_user, avg_sim, avg_conn)
 
-    if _SCALE == 'all':
-      scaler = fit_scaler('minmax', X_train)
-      X_train = scale_features(scaler, X_train)
-      X_val = scale_features(scaler, X_val)
-      X_test = scale_features(scaler, X_test)
-    else:
-      qid_dep_size = len(sim.itervalues().next()) + len(conn.itervalues().next())
-      scaler = fit_scaler_by_query('minmax', X_train, qid_train, qid_dep_size)
-      X_train = scale_features(scaler, X_train, qid_train, qid_dep_size)
-      X_val = scale_features(scaler, X_val, qid_val, qid_dep_size)
-      X_test = scale_features(scaler, X_test, qid_test, qid_dep_size)
+    scaler = fit_scaler('minmax', X_train)
+    X_train = scale_features(scaler, X_train)
+    X_val = scale_features(scaler, X_val)
+    X_test = scale_features(scaler, X_test)
 
     model = SVR(C=_C, epsilon=_EPS, kernel=_KERNEL)
     model.fit(X_train , y_train)
@@ -198,8 +185,8 @@ def predict():
     pred = model.predict(X_val)
     if _BIAS:
       bias.add_bias(val, reviews, pred)
-    output = open('%s/svr-c:%f,k:%s,e:%f,s:%s,f:%s,b:%s-%d-%d.dat' % (_VAL_DIR, 
-        _C, _KERNEL, _EPSILON, _SCALE, _FEAT_TYPE, 'y' if _BIAS else 'n', i, 0),
+    output = open('%s/svr-c:%f,k:%s,e:%f,f:%s,b:%s-%d-%d.dat' % (_VAL_DIR, 
+        _C, _KERNEL, _EPS, _FEAT_TYPE, 'y' if _BIAS else 'n', i, 0),
         'w')
     for p in pred:
       print >> output, p
@@ -208,8 +195,8 @@ def predict():
     pred = model.predict(X_test)
     if _BIAS:
       bias.add_bias(test, reviews, pred)
-    output = open('%s/svr-c:%f,k:%s,e:%f,s:%s,f:%s,b:%s-%d-%d.dat' % 
-        (_OUTPUT_DIR, _C, _KERNEL, _EPSILON, _SCALE, _FEAT_TYPE, 
+    output = open('%s/svr-c:%f,k:%s,e:%f,f:%s,b:%s-%d-%d.dat' % 
+        (_OUTPUT_DIR, _C, _KERNEL, _EPS, _FEAT_TYPE, 
         'y' if _BIAS else 'n', i, 0), 'w')
     for p in pred:
       print >> output, p

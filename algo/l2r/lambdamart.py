@@ -6,14 +6,11 @@
 
     Usage:
       $ python -m algo.cb.lambdamart [-l <learning_rate>] [-n <leaves>]
-        [-t <trees>] [-s <scale>] [-f <feature_set>] [-b <bias>]
+        [-t <trees>] [-f <feature_set>] [-b <bias>]
     where:
     <learning_rate> is a float which update step in each stage,
     <leaves> is the number of leaves of each tree (2^depth - 1),
     <trees> is the number of trees to build the model with,
-    <scale> is the type of feature scaling in the set ['all', 'up'] (the first
-      means one scaler for all and the second, one scaler for each user and 
-      product pair for user and product dependent features),
     <feature_set> is in the set ['www', 'cap', 'all'], and 
     <bias> is either 'y' or 'n'.
 """
@@ -36,7 +33,6 @@ from util.scaling import fit_scaler, fit_scaler_by_query, scale_features
 _ALPHA = 0.01
 _L = 10
 _T = 100
-_SCALE = 'all'
 _FEAT_TYPE = 'cap'
 _BIAS = False
 _PKL_DIR = 'out/pkl'
@@ -67,9 +63,6 @@ def load_args():
     elif argv[i] == '-t':
       global _T
       _T = int(argv[i+1])
-    elif argv[i] == '-s' and argv[i+1] in ['all', 'up']:
-      global _SCALE 
-      _SCALE = argv[i+1]
     elif argv[i] == '-f' and argv[i+1] in ['www', 'cap', 'all']:
       global _FEAT_TYPE
       _FEAT_TYPE = argv[i+1]
@@ -79,12 +72,12 @@ def load_args():
     else:
       print ('Usage: \n'
           '$ python -m algo.cb.lambdamart [-l <learning_rate>] [-n <leaves>] '
-          '[-t <trees>] [-s <scale>] [-f <feature_set>] [-b <bias>]')
+          '[-t <trees>] [-f <feature_set>] [-b <bias>]')
       exit()
     i = i + 2
   global _CONF_STR
-  _CONF_STR = 'l:%f,n:%s,t:%s,s:%s,f:%s,b:%s' % (_ALPHA, _L, _T, _SCALE,
-      _FEAT_TYPE, 'y' if _BIAS else 'n')
+  _CONF_STR = 'l:%f,n:%s,t:%s,f:%s,b:%s' % (_ALPHA, _L, _T, _FEAT_TYPE, 
+      'y' if _BIAS else 'n')
 
 
 def model_str(x, y, qid):
@@ -183,7 +176,7 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
 
 
 def main():
-  """ Predicts votes by applying a regressor technique.
+  """ Predicts votes by applying LambdaMART technique.
 
       Args:
         None.
@@ -219,17 +212,10 @@ def main():
     X_test, _, qid_test = generate_input(reviews, users, sim, conn, test, 
         avg_user, avg_sim, avg_conn)
     
-    if _SCALE == 'all':
-      scaler = fit_scaler('minmax', X_train)
-      X_train = scale_features(scaler, X_train)
-      X_val = scale_features(scaler, X_val)
-      X_test = scale_features(scaler, X_test)
-    else:
-      qid_dep_size = len(sim.itervalues().next()) + len(conn.itervalues().next())
-      scaler = fit_scaler_by_query('minmax', X_train, qid_train, qid_dep_size)
-      X_train = scale_features(scaler, X_train, qid_train, qid_dep_size)
-      X_val = scale_features(scaler, X_val, qid_val, qid_dep_size)
-      X_test = scale_features(scaler, X_test, qid_test, qid_dep_size)
+    scaler = fit_scaler('minmax', X_train)
+    X_train = scale_features(scaler, X_train)
+    X_val = scale_features(scaler, X_val)
+    X_test = scale_features(scaler, X_test)
 
     print 'Outputting model'
     outfile = open('%s/rank_train-%s-%d.dat' % (_DATA_DIR, _CONF_STR, i), 'w')
