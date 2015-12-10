@@ -123,27 +123,6 @@ def sigmoid(value):
         A float with the function return value.
   """
   return expit(value)
-#  try:
-#    val_inc = 1.0 + exp(-value)
-#  except OverflowError:
-#    return 0.0
-#  try:
-#    val = 1.0 / val_inc
-#  except OverflowError: # always positive, so max inf
-#    return float_info.max 
-#  return val 
- # try:
- #   denom = 1 + exp(-value)
- # except OverflowError:
- #   return 0
- # except Exception: #Underflow
- #   return 1
- # try:
- #   return 1 / denom
- # except OverflowError:
- #   return float_info.max
- # except Exception:
- #   return 0
 
 def sigmoid_der1(value):
   """ Computes the sigmoid function applied to value. The function corresponds
@@ -161,35 +140,6 @@ def sigmoid_der1(value):
   """
   e_val = expit(value)
   return e_val * (1 - e_val)
-#  try:
-#    val = exp(value)
-#    val_inc = val + 1.0
-#  except OverflowError:
-#    return 0.0
-#  try:
-#    val = value - 2 * log(val_inc)
-#  except OverflowError: # only overflows to negative infinite, log is positive
-#    # because val is greater than one
-#    return - float_info.max
-#  return exp(val)
- # try:
- #   e_val = exp(-value)
- # except OverflowError: # Denominator higher
- #   return 0
- # except Exception: # Underflow: Nominator higher
- #   return float_info.max
- # try:
- #   denom = (1 + e_val) ** 2 
- # except OverflowError:
- #   return 0
- # except Exception:
- #   return float_info.max
- # try:
- #   return e_val / denom
- # except OverflowError:
- #   return float_info.max
- # except Exception:
- #   return 0
 
 def sigmoid_der2(value):
   """ Computes the sigmoid function applied to value. The function corresponds
@@ -207,47 +157,3 @@ def sigmoid_der2(value):
   """
   e_val = expit(value)
   return e_val * (2 * e_val ** 2 - 3 * e_val + 1)
-#  try:
-#    val = exp(value)
-#    val_inc = val + 1.0
-#    val_dec = val - 1.0
-#  except OverflowError:
-#    return 0.0
-#  if val_dec < 0:
-#    try:
-#      val = value + log(- val_dec) - 3 * log(val_inc)
-#    except OverflowError: # -val_dec is between 0 and 1, thus negative log, and
-#        # val_inc is greater than one, but subtracted, thus the overflow is 
-#        # negative
-#      return - float_info.max
-#    return exp(value)
-#  else:
-#    try:
-#      val = value + log(val_dec) - 3 * log(val_inc)
-#    except OverflowError:
-#      # val_dec is positive but val_inc is greater and subtracted, thus only
-#      # negative overflow might occur
-#      return - float_info.max
-#    return - exp(value)
-#  try:
-#    val = val / val_inc
-#    val = val / val_inc
-#  except OverflowError:
-#    return float_into.max
-#  return - val
- # try:
- #   e_val = exp(-value)
- #   e_val_inc = e_val + 1
- #   e_val_dec = e_val - 1
- # except OverflowError: # Denominator higher
- #   return 0
- # except Exception: # Underflow: Nominator higher
- #   return float_info.max
- # try:
- #   res = e_val / e_val_inc
- #   res *= e_val_dec / e_val_inc
- #   return res / e_val_inc
- # except OverflowError:
- #   return float_info.max
- # except Exception:
- #   return 0
