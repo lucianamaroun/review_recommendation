@@ -6,7 +6,7 @@
     latent vectors.
 
     Usage:
-      $ python -m algo.cf.mf [-k <k>] [-i <iterations>] [-l <learning_rate>]
+      $ python -m algo.recsys.mf [-k <k>] [-i <iterations>] [-l <learning_rate>]
         [-r <regularization>] [-e <tolerance>] [-b <bias>]
     where:
     <k> is an integer with the number of latent dimensions,
@@ -75,7 +75,7 @@ def load_args():
       global _BIAS
       _BIAS = True if argv[i+1] == 'y' else False
     else:
-      print ('Usage:\n  $ python -m algo.cf.mf [-k <k>] [-i <iterations>] '
+      print ('Usage:\n  $ python -m algo.recsys.mf [-k <k>] [-i <iterations>] '
           '[-l <learning_rate>] [-r <regularization>] [-e <tolerance>] '
           '[-b <bias>]')
       exit()
@@ -115,13 +115,15 @@ class MF_Model(object):
         Returns:
           None. Instance fields are updated.
     """
-    users = sorted(set([vote['voter'] for vote in votes]))
-    authors = sorted(set([vote['author'] for vote in votes]))
+    # users = sorted(set([vote['voter'] for vote in votes]))
+    # authors = sorted(set([vote['author'] for vote in votes]))
+    users = sorted(set([vote['voter'] for vote in votes]) \
+        .union(set([vote['author'] for vote in votes])))
     self.user_map = {u:i for i, u in enumerate(users)}
-    self.author_map = {r:i for i, r in enumerate(authors)}
+    # self.author_map = {r:i for i, r in enumerate(authors)}
     seed(int(time() * 1000000) % 1000000)
     self.U = uniform(10e-10, 10e-8, (len(users), _K))
-    self.A = uniform(10e-10, 10e-8, (len(authors), _K))
+   # self.A = uniform(10e-10, 10e-8, (len(authors), _K))
     self.overall_mean = float(sum([v['vote'] for v in votes])) / len(votes)
 
   def _calculate_bias(self, votes):
@@ -176,8 +178,10 @@ class MF_Model(object):
     for it in xrange(_ITER):
       for vote in votes:
         u = self.user_map[vote['voter']]
-        a = self.author_map[vote['author']]
-        dot = self.U[u,:].dot(self.A[a,:].T)
+       # a = self.author_map[vote['author']]
+        a = self.user_map[vote['author']]
+       # dot = self.U[u,:].dot(self.A[a,:].T)
+        dot = self.U[u,:].dot(self.U[a,:].T)
         if _BIAS:
           dot += self.overall_mean + self.user_bias[vote['voter']] + \
               self.author_bias[vote['author']]
@@ -187,17 +191,24 @@ class MF_Model(object):
               self.user_bias[vote['voter']])
           self.author_bias[vote['author']] -= _ALPHA * (error + _BETA *
               self.author_bias[vote['author']])
-        new_u = self.U[u,:] - _ALPHA * (error * self.A[a,:] + \
+       # new_u = self.U[u,:] - _ALPHA * (error * self.A[a,:] + \
+       #     _BETA * self.U[u,:])
+       # new_a = self.A[a,:] - _ALPHA * (error * self.U[u,:] + \
+       #     _BETA * self.A[a,:])
+        new_u = self.U[u,:] - _ALPHA * (error * self.U[a,:] + \
             _BETA * self.U[u,:])
-        new_a = self.A[a,:] - _ALPHA * (error * self.U[u,:] + \
-            _BETA * self.A[a,:])
+        new_a = self.U[a,:] - _ALPHA * (error * self.U[u,:] + \
+            _BETA * self.U[a,:])
         self.U[u,:] = new_u
-        self.A[a,:] = new_a
+       # self.A[a,:] = new_a
+        self.U[a,:] = new_a
       value = 0.0
       for vote in votes:
         u = self.user_map[vote['voter']]
-        a = self.author_map[vote['author']]
-        dot = self.U[u,:].dot(self.A[a,:].T)
+       # a = self.author_map[vote['author']]
+        a = self.user_map[vote['author']]
+       # dot = self.U[u,:].dot(self.A[a,:].T)
+        dot = self.U[u,:].dot(self.U[a,:].T)
         if _BIAS:
           dot += self.overall_mean + self.user_bias[vote['voter']] + \
               self.author_bias[vote['author']]
@@ -206,7 +217,8 @@ class MF_Model(object):
           value += self.user_bias[vote['voter']] ** 2 + \
               self.author_bias[vote['author']] ** 2
         for k in xrange(_K):
-          value += _BETA * (self.U[u,k] ** 2 + self.A[a,k] ** 2)
+         # value += _BETA * (self.U[u,k] ** 2 + self.A[a,k] ** 2)
+          value += _BETA * (self.U[u,k] ** 2 + self.U[a,k] ** 2)
         value /= 2.0
       if abs(previous - value) < _TOL:
         print 'Convergence'
@@ -226,10 +238,14 @@ class MF_Model(object):
     pred = []
     cold_start = 0
     for vote in votes:
-      u = self.user_map[vote['voter']] if vote['voter'] in self.user_map else -1
-      a = self.author_map[vote['author']] if vote['author'] in self.author_map else -1
+      u = self.user_map[vote['voter']] if vote['voter'] in self.user_map and \
+          vote['voter'] in self.user_bias else -1
+     # a = self.author_map[vote['author']] if vote['author'] in self.author_map else -1
+      a = self.user_map[vote['author']] if vote['author'] in self.user_map and \
+          vote['author'] in self.author_bias else -1
       if u != -1 and a != -1:
-        dot = self.U[u,:].dot(self.A[a,:].T)
+       # dot = self.U[u,:].dot(self.A[a,:].T)
+        dot = self.U[u,:].dot(self.U[a,:].T)
         if _BIAS:
           dot += self.overall_mean + self.user_bias[vote['voter']] + \
               self.author_bias[vote['author']]

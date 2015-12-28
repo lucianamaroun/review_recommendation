@@ -1,4 +1,4 @@
-""" Netwon-Raphson Module
+""" Netwon-Raphson Method
     ---------------------
 
     Computes root of a function using Newton-Raphson method. This method is used

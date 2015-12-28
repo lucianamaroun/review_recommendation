@@ -1,10 +1,10 @@
-""" Prediction using Regression Methods
-    -----------------------------------
+""" Gradient Boosting Regressor Trees 
+    ---------------------------------
 
-    Use of regression methods for predicting relevance of reviews for users.
+    Use of GBRT for predicting relevance of reviews for users.
 
     Usage:
-      $ python -m algo.cb.gbrt [-l <learning_rate>] [-t <num_trees>] 
+      $ python -m algo.reg.gbrt [-l <learning_rate>] [-t <num_trees>] 
         [-d <max_depth>] [-e <loss_func>] [-p <subsample>] [-m <max_feat>]
         [-f <feature_set>] [-b <bias>]
     where:
@@ -107,6 +107,9 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
         conn: dictionary of author-voter connection strength, indexed by the
           pair.
         votes: list of votes to extract features from.
+        avg_user: dictionary of an average user for mean imputation.
+        avg_sim: dictionary of an average similarity relation.
+        avg_conn: dictionary of an average connection strength relation.
 
       Returns:
         A triple with an list of features' lists, a list of true votes and a

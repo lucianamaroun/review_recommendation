@@ -6,7 +6,7 @@
     is centered on the regression of observed features.
 
     Usage:
-      $ python -m algo.cf.rlfm [-k <k>] [-i <iterations>] [-g <gibbs_samples>]
+      $ python -m algo.recsys.rlfm [-k <k>] [-i <iterations>] [-g <gibbs_samples>]
         [-b <burn_in>] [-s <scale>] [-f <feature_set>]
     where:
     <k> is the number of latent dimensions,
@@ -70,7 +70,7 @@ def load_args():
       global _FEAT
       _FEAT = argv[i+1]
     else:
-      print ('Usage: python -m algo.cf.rlfm [-k <k>] [-i <iterations>] '
+      print ('Usage: python -m algo.recsys.rlfm [-k <k>] [-i <iterations>] '
           '[-g <gibb_samples>] [-b <burn_in>] [-f <feature_type>]')
       exit()
     i = i + 2
@@ -265,7 +265,15 @@ def output_entity(name, model, ids, i):
   efeat.close()
 
 
-def run():
+def main():
+  """ Main method, which performs prediction and outputs to file.
+
+      Args:
+        None.
+
+      Returns:
+        None.
+  """
   load_args()
   
   for i in xrange(NUM_SETS):
@@ -352,4 +360,4 @@ def run():
 
 
 if __name__ == '__main__':
-  run() 
+  main() 

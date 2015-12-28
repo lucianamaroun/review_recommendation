@@ -1,19 +1,18 @@
-""" SVMRank Module
-    --------------
+""" LambdaMart
+    ----------
 
-    Applies a SVMRank, a pairwise learning to rank technique, for recommending
-    reviews.
+    Applies a LambdaMART, a pairwise learning to rank technique, for
+    recommending reviews.
 
     Usage:
-      $ python -m algo.cb.svmrank [-c <penalty>] [-a <algorithm>] 
-        [-f <feature_set>] [-b <bias>] [-k <kernel>]
+      $ python -m algo.ltr.lambdamart [-l <learning_rate>] [-n <leaves>]
+        [-t <trees>] [-f <feature_set>] [-b <bias>]
     where:
-    <penalty> is a float which weights the error term,
-    <algorithms> is the learning algorithm, in the set [1, 2, 3, 4],
+    <learning_rate> is a float which update step in each stage,
+    <leaves> is the number of leaves of each tree (2^depth - 1),
+    <trees> is the number of trees to build the model with,
     <feature_set> is in the set ['www', 'cap', 'all'], and 
-    <bias> is either 'y' or 'n',
-    <kernel> kernel id, 0 for linear, 1 for polynomial, 2 for rbf and 3 for
-      sigmoid.
+    <bias> is either 'y' or 'n'.
 """
 
 
@@ -31,11 +30,11 @@ from util.bias import BiasModel
 from util.scaling import fit_scaler, fit_scaler_by_query, scale_features
 
 
-_C = 0.01
-_ALGO = 3
+_ALPHA = 0.01
+_L = 10
+_T = 100
 _FEAT_TYPE = 'cap'
 _BIAS = False
-_KERNEL = '0' 
 _PKL_DIR = 'out/pkl'
 _VAL_DIR = 'out/val'
 _DATA_DIR = 'out/data'
@@ -55,29 +54,29 @@ def load_args():
   """
   i = 1
   while i < len(argv): 
-    if argv[i] == '-c':
-      global _C
-      _C = float(argv[i+1])
-    elif argv[i] == '-a' and argv[i+1] in ['0', '1', '2', '3', '4']:
-      global _ALGO
-      _ALGO = argv[i+1] 
+    if argv[i] == '-l':
+      global _ALPHA
+      _ALPHA = float(argv[i+1])
+    elif argv[i] == '-n':
+      global _L
+      _L = int(argv[i+1])
+    elif argv[i] == '-t':
+      global _T
+      _T = int(argv[i+1])
     elif argv[i] == '-f' and argv[i+1] in ['www', 'cap', 'all']:
       global _FEAT_TYPE
       _FEAT_TYPE = argv[i+1]
     elif argv[i] == '-b' and argv[i+1] in ['y', 'n']:
       global _BIAS
       _BIAS = True if argv[i+1] == 'y' else False
-    elif argv[i] == '-k':
-      global _KERNEL
-      _KERNEL = argv[i+1] 
     else:
-      print ('Usage: $ python -m algo.cb.svmrank [-c <penalty>] '
-          '[-a <algorithm>] [-f <feature_set>] [-b <bias>] '
-          '[-k <kernel>]')
+      print ('Usage: \n'
+          '$ python -m algo.ltr.lambdamart [-l <learning_rate>] [-n <leaves>] '
+          '[-t <trees>] [-f <feature_set>] [-b <bias>]')
       exit()
     i = i + 2
   global _CONF_STR
-  _CONF_STR = 'c:%f,a:%s,k:%s,f:%s,b:%s' % (_C, _ALGO, _KERNEL, _FEAT_TYPE,
+  _CONF_STR = 'l:%f,n:%s,t:%s,f:%s,b:%s' % (_ALPHA, _L, _T, _FEAT_TYPE, 
       'y' if _BIAS else 'n')
 
 
@@ -135,6 +134,9 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
         conn: dictionary of author-voter connection strength, indexed by the
           pair.
         votes: list of votes to extract features from.
+        avg_user: dictionary of an average user for mean imputation.
+        avg_sim: dictionary of an average similarity relation.
+        avg_conn: dictionary of an average connection strength relation.
 
       Returns:
         A triple with an list of features' lists, a list of true votes and a
@@ -156,28 +158,28 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
         example.append(avg_user[feature]) 
       else:
         example.append(author[feature])
-   # voter = users[vote['voter']] if vote['voter'] in users else avg_user
-   # av = (author['id'], voter['id'])
-   # u_sim = sim[av] if av in sim else avg_sim
-   # for feature in SIM_FEATS[_FEAT_TYPE]:
-   #   if isnan(u_sim[feature]):
-   #     example.append(avg_sim[feature]) 
-   #   else:
-   #     example.append(u_sim[feature]) 
-   # u_conn = conn[av] if av in conn else avg_conn
-   # for feature in CONN_FEATS[_FEAT_TYPE]:
-   #   if isnan(u_conn[feature]):
-   #     example.append(avg_conn[feature]) 
-   #   else:
-   #     example.append(u_conn[feature]) 
+    voter = users[vote['voter']] if vote['voter'] in users else avg_user
+    av = (author['id'], voter['id'])
+    u_sim = sim[av] if av in sim else avg_sim
+    for feature in SIM_FEATS[_FEAT_TYPE]:
+      if isnan(u_sim[feature]):
+        example.append(avg_sim[feature]) 
+      else:
+        example.append(u_sim[feature]) 
+    u_conn = conn[av] if av in conn else avg_conn
+    for feature in CONN_FEATS[_FEAT_TYPE]:
+      if isnan(u_conn[feature]):
+        example.append(avg_conn[feature]) 
+      else:
+        example.append(u_conn[feature]) 
     X.append(example)
     y.append(vote['vote'])
     qid.append(int(vote['voter']))
   return X, y, qid
 
 
-def predict():
-  """ Predicts votes by applying RankSVM technique.
+def main():
+  """ Predicts votes by applying LambdaMART technique.
 
       Args:
         None.
@@ -229,62 +231,71 @@ def predict():
     test_index = output_model(X_test, None, qid_test, outfile)
     outfile.close()
 
-    print 'Fitting model'
-    print getoutput(('lib/svm_rank/svm_rank_learn -c %f -w %s -t %s '
-        '%s/rank_train-%s-%d.dat %s/rank_model-%s-%d-0.dat') % (_C, _ALGO,
-        _KERNEL, _DATA_DIR, _CONF_STR, i, _MODEL_DIR, _CONF_STR, i))
-    print getoutput(('lib/svm_rank/svm_rank_classify ' 
-        '%s/rank_train-%s-%d.dat %s/rank_model-%s-%d-0.dat '
-        '%s/rank_pred_train-%s-%d-0.dat') % (_DATA_DIR,
-        _CONF_STR, i, _MODEL_DIR, _CONF_STR, i, _DATA_DIR, _CONF_STR, i))
+    for j in xrange(REP):
+      print 'Fitting model'
+      print getoutput(('java -jar lib/ranklib/RankLib.jar -train '
+          '%s/rank_train-%s-%d.dat -save %s/lambdamart_model-%s-%d-%d.dat '
+          '-gmax 5 -ranker 6 -metric2t NDCG@5 -tree %d -leaf %d -shrinkage '
+          '%f') % (_DATA_DIR, _CONF_STR, i, _MODEL_DIR, _CONF_STR, i, j, _T,
+          _L, _ALPHA)) 
 
-    raw_pred = []
-    predfile = open('%s/rank_pred_train-%s-%d-0.dat' % (_DATA_DIR, _CONF_STR,
-        i), 'r')
-    raw_pred = [float(p.strip()) for p in predfile]
-    predfile.close()
-    pred = [raw_pred[j] for j in train_index]
-    if _BIAS:
-      bias.add_bias(train, reviews, pred)
-    print '~ Training error on set %d repetition %d' % (i, 0)
-    print 'RMSE: %f' % calculate_rmse(pred, train_truth)
-    print 'nDCG@%d: %f' % (RANK_SIZE, calculate_avg_ndcg(train, reviews,
-        pred, train_truth, RANK_SIZE))
+      print 'Evaluating in train'
+      print getoutput(('java -jar lib/ranklib/RankLib.jar -load '
+          '%s/lambdamart_model-%s-%d-%d.dat -rank %s/rank_train-%s-%d.dat '
+          '-score %s/rank_pred_train-%s-%d-%d.dat -gmax 5 -metric2T NDCG@5') % \
+          (_MODEL_DIR, _CONF_STR, i, j, _DATA_DIR, _CONF_STR, i, _DATA_DIR,
+          _CONF_STR, i, j))
+      raw_pred = []
+      predfile = open('%s/rank_pred_train-%s-%d-%d.dat' % (_DATA_DIR, _CONF_STR,
+          i, j), 'r')
+      raw_pred = [float(p.strip().split()[2]) for p in predfile]
+      predfile.close()
+      pred = [raw_pred[k] for k in train_index]
+      if _BIAS:
+        bias.add_bias(train, reviews, pred)
+      print '~ Training error on set %d repetition %d' % (i, j)
+      print 'RMSE: %f' % calculate_rmse(pred, train_truth)
+      print 'nDCG@%d: %f' % (RANK_SIZE, calculate_avg_ndcg(train, reviews,
+          pred, train_truth, RANK_SIZE))
 
-    print 'Predicting in validation'
-    print getoutput(('lib/svm_rank/svm_rank_classify ' 
-        '%s/rank_val-%s-%d.dat %s/rank_model-%s-%d-0.dat '
-        '%s/rank_pred_val-%s-%d-0.dat') % (_DATA_DIR,
-        _CONF_STR, i, _MODEL_DIR, _CONF_STR, i, _DATA_DIR, _CONF_STR, i))
-    predfile = open('%s/rank_pred_val-%s-%d-0.dat' % (_DATA_DIR, _CONF_STR,
-        i), 'r')
-    raw_pred = [float(p.strip()) for p in predfile]
-    predfile.close()
-    pred = [raw_pred[j] for j in val_index]
-    if _BIAS:
-      bias.add_bias(val, reviews, pred)
-    output = open('%s/svmrank-%s-%d-0.dat' % (_VAL_DIR, _CONF_STR, i), 'w')
-    for p in pred:
-      print >> output, p
-    output.close()
-    
-    print 'Predicting in test'
-    print getoutput(('lib/svm_rank/svm_rank_classify ' 
-        '%s/rank_test-%s-%d.dat %s/rank_model-%s-%d-0.dat '
-        '%s/rank_pred_test-%s-%d-0.dat') % (_DATA_DIR,
-        _CONF_STR, i, _MODEL_DIR, _CONF_STR, i, _DATA_DIR, _CONF_STR, i))
-    predfile = open('%s/rank_pred_test-%s-%d-0.dat' % (_DATA_DIR, _CONF_STR,
-        i), 'r')
-    raw_pred = [float(p.strip()) for p in predfile]
-    predfile.close()
-    pred = [raw_pred[j] for j in test_index]
-    if _BIAS:
-      bias.add_bias(test, reviews, pred)
-    output = open('%s/svmrank-%s-%d-0.dat' % (_OUTPUT_DIR, _CONF_STR, i), 'w')
-    for p in pred:
-      print >> output, p
-    output.close()
+      print 'Predicting in validation'
+      print getoutput(('java -jar lib/ranklib/RankLib.jar -load '
+          '%s/lambdamart_model-%s-%d-%d.dat -rank %s/rank_val-%s-%d.dat '
+          '-score %s/rank_pred_val-%s-%d-%d.dat -gmax 5 -metric2T NDCG@5') % \
+          (_MODEL_DIR, _CONF_STR, i, j, _DATA_DIR, _CONF_STR, i, _DATA_DIR,
+          _CONF_STR, i, j))
+      predfile = open('%s/rank_pred_val-%s-%d-%d.dat' % (_DATA_DIR, _CONF_STR,
+          i, j), 'r')
+      raw_pred = [float(p.strip().split()[2]) for p in predfile]
+      predfile.close()
+      pred = [raw_pred[k] for k in val_index]
+      if _BIAS:
+        bias.add_bias(val, reviews, pred)
+      output = open('%s/lambdamart-%s-%d-%d.dat' % (_VAL_DIR, _CONF_STR, i, j),
+          'w')
+      for p in pred:
+        print >> output, p
+      output.close()
+      
+      print 'Predicting in test'
+      print getoutput(('java -jar lib/ranklib/RankLib.jar -load '
+          '%s/lambdamart_model-%s-%d-%d.dat -rank %s/rank_test-%s-%d.dat '
+          '-score %s/rank_pred_test-%s-%d-%d.dat -gmax 5 -metric2T NDCG@5') % \
+          (_MODEL_DIR, _CONF_STR, i, j, _DATA_DIR, _CONF_STR, i, _DATA_DIR,
+          _CONF_STR, i, j))
+      predfile = open('%s/rank_pred_test-%s-%d-%d.dat' % (_DATA_DIR, _CONF_STR,
+          i, j), 'r')
+      raw_pred = [float(p.strip().split()[2]) for p in predfile]
+      predfile.close()
+      pred = [raw_pred[k] for k in test_index]
+      if _BIAS:
+        bias.add_bias(test, reviews, pred)
+      output = open('%s/lambdamart-%s-%d-%d.dat' % (_OUTPUT_DIR, _CONF_STR, i, 
+          j), 'w')
+      for p in pred:
+        print >> output, p
+      output.close()
 
 
 if __name__ == '__main__':
-  predict()
+  main()

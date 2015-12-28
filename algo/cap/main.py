@@ -271,6 +271,14 @@ def calculate_predictions(groups, test, users, trusts, features, sim, conn):
 
 
 def main():
+  """ Main method performing fitting, prediction and outputting to file.
+
+      Args:
+        None.
+
+      Returns:
+        None.
+  """
   load_args()
   
   for i in xrange(NUM_SETS):

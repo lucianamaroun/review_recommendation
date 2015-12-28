@@ -1,10 +1,10 @@
-""" Prediction using Regression Methods
-    -----------------------------------
+""" SVM Regressor 
+    -------------
 
-    Use of regression methods for predicting relevance of reviews for users.
+    Use of SVR for predicting relevance of reviews for users.
 
     Usage:
-      $ python -m algo.cb.lr [-c <penalty>] [-k <kernel>] [-e <epsilon>] 
+      $ python -m algo.reg.svr [-c <penalty>] [-k <kernel>] [-e <epsilon>] 
           [-f <feature_set>] [-b <bias>]
     where:
     <penalty> is a float which weights the error term,
@@ -20,6 +20,7 @@ from pickle import load
 from sys import argv, exit
 
 from numpy import nan, isnan
+from numpy.random import binomial
 from sklearn.svm import SVR
 
 from algo.const import NUM_SETS, RANK_SIZE, REP, REVIEW_FEATS, AUTHOR_FEATS, \
@@ -69,7 +70,7 @@ def load_args():
       global _BIAS
       _BIAS = True if argv[i+1] == 'y' else False
     else:
-      print ('Usage: $ python -m algo.cb.svr [-c <penalty>] [-k <kernel>] '
+      print ('Usage: $ python -m algo.reg.svr [-c <penalty>] [-k <kernel>] '
           '[-e <epsilon>] [-f <feature_set>] [-b <bias>]')
       exit()
     i = i + 2
@@ -86,6 +87,9 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
         conn: dictionary of author-voter connection strength, indexed by the
           pair.
         votes: list of votes to extract features from.
+        avg_user: dictionary of an average user for mean imputation.
+        avg_sim: dictionary of an average similarity relation.
+        avg_conn: dictionary of an average connection strength relation.
 
       Returns:
         A triple with an list of features' lists, a list of true votes and a
@@ -150,8 +154,20 @@ def predict():
     val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
     sim = load(open('%s/sim-%d.pkl' % (_PKL_DIR, i), 'r'))
     conn = load(open('%s/conn-%d.pkl' % (_PKL_DIR, i), 'r'))
- 
-    train_truth = [v['vote'] for v in train]
+
+    names = []
+    for feature in REVIEW_FEATS[_FEAT_TYPE]:
+      names.append('r_' + feature)
+    for feature in AUTHOR_FEATS[_FEAT_TYPE]:
+      names.append('a_' + feature)
+    for feature in VOTER_FEATS[_FEAT_TYPE]:
+      names.append('v_' + feature)
+    for feature in SIM_FEATS[_FEAT_TYPE]:
+      names.append('s_' + feature)
+    for feature in CONN_FEATS[_FEAT_TYPE]:
+      names.append('c_' + feature)
+
+    train_truth = [v['vote'] for v in train] 
     if _BIAS:
       bias = BiasModel()
       train = bias.fit_transform(train, reviews)
@@ -173,7 +189,12 @@ def predict():
 
     model = SVR(C=_C, epsilon=_EPS, kernel=_KERNEL)
     model.fit(X_train , y_train)
-    
+    print 'Intercept: ' + str(model.intercept_)
+    print 'Coefficients: '
+    print model.coef_
+    print sorted([f for f in names], key=lambda f:
+        abs(model.coef_[0,names.index(f)]), reverse=True)
+
     pred = model.predict(X_train)
     if _BIAS:
       bias.add_bias(train, reviews, pred)
@@ -201,7 +222,6 @@ def predict():
     for p in pred:
       print >> output, p
     output.close()
-
 
 if __name__ == '__main__':
   predict()

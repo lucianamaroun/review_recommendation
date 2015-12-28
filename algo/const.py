@@ -16,6 +16,8 @@ REVIEW_FEATS = {
     'cap_sent', 'noun_ratio', 'adj_ratio', 'comp_ratio', 'verb_ratio',
     'adv_ratio', 'fw_ratio', 'sym_ratio', 'num_ratio', 'punct_ratio', 'kl',
     'pos_ratio', 'neg_ratio'],
+  'sel': ['num_tokens', 'uni_ratio', 'noun_ratio', 'sym_ratio', 'fw_ratio',
+    'kl', 'avg_sent', 'punct_ratio'],
   'cap': ['num_tokens', 'num_sents', 'uni_ratio', 'avg_sent',
     'cap_sent', 'noun_ratio', 'adj_ratio', 'comp_ratio', 'verb_ratio',
     'adv_ratio', 'fw_ratio', 'sym_ratio', 'num_ratio', 'punct_ratio', 'kl',
@@ -28,6 +30,7 @@ REVIEW_FEATS = {
 AUTHOR_FEATS = {
   'www': ['num_reviews', 'avg_rating', 'num_trustors', 'num_trustees',
     'pagerank'],
+  'sel': ['num_trustors'],
   'cap': ['num_reviews', 'avg_rating', 'num_trustors', 'num_trustees',
     'pagerank'],
   'all': ['num_reviews', 'avg_rating', 'num_trustors', 'num_trustees',
@@ -38,6 +41,7 @@ AUTHOR_FEATS = {
 }
 VOTER_FEATS = {
   'www': [],
+  'sel': ['avg_help_giv', 'avg_help_giv_tru_net'],
   'cap': ['num_trustors', 'num_trustees', 'pagerank', 'avg_rating',
     'avg_rating_dir_net', 'avg_rating_sim', 'avg_help_giv', 'avg_help_giv_sim', 
     'avg_help_giv_tru_net'],
@@ -49,6 +53,7 @@ VOTER_FEATS = {
 }
 SIM_FEATS = {
   'www': [],
+  'sel': ['jacc_rated', 'common_rated'],
   'cap': ['common_rated', 'jacc_rated', 'cos_ratings', 'pear_ratings',
     'diff_avg_ratings', 'diff_max_ratings', 'diff_min_ratings'],
   'all': ['common_rated', 'jacc_rated', 'cos_ratings', 'pear_ratings',
@@ -56,6 +61,7 @@ SIM_FEATS = {
 }
 CONN_FEATS = {
   'www': [],
+  'cap': ['jacc_trustors', 'adamic_adar_trustors'],
   'cap': ['jacc_trustees', 'jacc_trustors', 'adamic_adar_trustees',
     'adamic_adar_trustors', 'katz'],
   'all': ['jacc_trustees', 'jacc_trustors', 'adamic_adar_trustees',

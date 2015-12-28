@@ -1,15 +1,16 @@
-""" Prediction using Regression Methods
-    -----------------------------------
+""" Ridge Linear Regressor 
+    ----------------------
 
-    Use of regression methods for predicting relevance of reviews for users.
+    Use of Ridge regression for predicting relevance of reviews for users.
 
     Usage:
-      $ python -m algo.cb.lr [-r <reg_weight>] [-f <feature_set>]
-        [-b <bias>]
+      $ python -m algo.reg.lr [-r <regularization>] [-f <feature_set>]
+        [-b <bias>] [-s <solver>]
     where:
-    <reg_weight> is a float with the regularization weight, 
-    <feature_set> is in the set ['www', 'cap', 'all'], and 
-    <bias> is either 'y' or 'n'.
+    <regularization> is a float with the regularization factor, 
+    <feature_set> is in the set ['www', 'cap', 'all'], 
+    <bias> is either 'y' or 'n', and
+    <solver> is the method to solve the optimization problem.
 """
 
 
@@ -34,6 +35,7 @@ _PKL_DIR = 'out/pkl'
 _FEAT_TYPE = 'cap'
 _BETA = 0.01
 _BIAS = False
+_SOLVER = 'svd'
 
 
 def load_args():
@@ -56,9 +58,13 @@ def load_args():
     elif argv[i] == '-b' and argv[i+1] in ['y', 'n']:
       global _BIAS
       _BIAS = True if argv[i+1] == 'y' else False
+    elif argv[i] == '-s' and argv[i+1] in ['svd', 'cholesky', 'lsqr',
+        'sparse_cg', 'sag']:
+      global _SOLVER
+      _SOLVER = argv[i+1] 
     else:
-      print ('Usage: $ python -m algo.cb.lr [-r <reg_weight>]'
-          '[-s <scale>] [-f <feature_set>] [-b <bias>]')
+      print ('Usage: $ python -m algo.reg.lr [-r <regularization>]'
+          '[-s <solver>] [-f <feature_set>] [-b <bias>]')
       exit()
     i = i + 2
 
@@ -74,6 +80,9 @@ def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn
         conn: dictionary of author-voter connection strength, indexed by the
           pair.
         votes: list of votes to extract features from.
+        avg_user: dictionary of an average user for mean imputation.
+        avg_sim: dictionary of an average similarity relation.
+        avg_conn: dictionary of an average connection strength relation.
 
       Returns:
         A triple with an list of features' lists, a list of true votes and a
@@ -159,7 +168,7 @@ def main():
     X_val = scale_features(scaler, X_val)
     X_test = scale_features(scaler, X_test)
 
-    model = Ridge(alpha=_BETA) 
+    model = Ridge(alpha=_BETA, solver=_SOLVER) 
         # for standardized notation across algorithms, we consider alpha to be 
         # learning rate of and beta, regularization weight
     model.fit(X_train , y_train)
@@ -175,8 +184,8 @@ def main():
     pred = model.predict(X_val)
     if _BIAS:
       bias.add_bias(val, reviews, pred)
-    output = open('%s/lr-r:%f,f:%s,b:%s-%d-%d.dat' % (_VAL_DIR, _BETA,
-        _FEAT_TYPE, 'y' if _BIAS else 'n', i, 0), 'w')
+    output = open('%s/lr-r:%f,f:%s,b:%s,s:%s-%d-%d.dat' % (_VAL_DIR, _BETA,
+        _FEAT_TYPE, 'y' if _BIAS else 'n', _SOLVER, i, 0), 'w')
     for p in pred:
       print >> output, p
     output.close()
@@ -184,8 +193,8 @@ def main():
     pred = model.predict(X_test)
     if _BIAS:
       bias.add_bias(test, reviews, pred)
-    output = open('%s/lr-r:%f,f:%s,b:%s-%d-%d.dat' % (_OUTPUT_DIR, _BETA,
-        _FEAT_TYPE, 'y' if _BIAS else 'n', i, 0), 'w')
+    output = open('%s/lr-r:%f,f:%s,b:%s,s:%s-%d-%d.dat' % (_OUTPUT_DIR, _BETA,
+        _FEAT_TYPE, 'y' if _BIAS else 'n', _SOLVER, i, 0), 'w')
     for p in pred:
       print >> output, p
     output.close()

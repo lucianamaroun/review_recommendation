@@ -1,7 +1,7 @@
 """ BETF Module
     -----------
 
-    Implementation of Tensor Factorization for prediction of helpfulness votes.
+    Implementation of a Tensor Factorization for prediction of helpfulness.
     Voter, author and product are the dimensions considered in the model and
     modeled as latent vectors. Interaction between author and product explain
     observed rating as well. Bias of review, rater, author and product is
@@ -182,6 +182,14 @@ class BETF_Model(object):
       self.review_p_bias[review_p] /= float(review_p_count[review_p])
       
   def _calculate_rating_bias(self, reviews):
+    """ Calculates entities' biases related to rating value.
+
+        Args:
+          reviews: list of reviews in training set.
+
+        Returns:
+          None. Instance fields are updated.
+    """
     self.author_bias = {}
     author_count = {}
     self.product_bias = {}
@@ -443,7 +451,15 @@ class BETF_Model(object):
     return pred
 
 
-if __name__ == '__main__':
+def main():
+  """ Main method performing fitting, prediction and outputting to file.
+
+      Args:
+        None.
+
+      Returns:
+        None.
+  """
   load_args()
 
   for i in xrange(NUM_SETS):
@@ -504,3 +520,6 @@ if __name__ == '__main__':
       print '-- RMSE: %f' % calculate_rmse(pred, truth)
       print '-- nDCG@%d: %f' % (RANK_SIZE, calculate_avg_ndcg(test, reviews, 
           pred, truth, RANK_SIZE))
+
+if __name__ == '__main__':
+  main()

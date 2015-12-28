@@ -1,4 +1,4 @@
-""" Mean-based Prediction
+""" Mean-based Predictors
     ---------------------
 
     Implements simple predictors using mean statistics from test set.
