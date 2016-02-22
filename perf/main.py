@@ -1,4 +1,5 @@
 """ Processing Output Module
+     i
     ------------------------
 
     Process output of a prediction and evaluates using RMSE and nDCG.
@@ -16,14 +17,17 @@
 
 
 from math import sqrt
-from numpy import mean, std, array
-from os.path import isfile
 from pickle import load
-from scipy.stats import t 
+from os.path import isfile
 from sys import argv, exit
 
+from numpy import mean, std, array
+from scipy.stats import t 
+from sklearn.metrics import average_precision_score
+
 from algo.const import NUM_SETS, CONF_QT, RANK_SIZE, REP
-from perf.metrics import calculate_rmse, calculate_ndcg
+from perf.metrics import calculate_rmse, calculate_ndcg, calculate_ap, \
+    calculate_err
 
 
 def parse_args():
@@ -84,14 +88,13 @@ def evaluate_regression(pred, votes, output):
         pred: a list of floats with predicted values.
         votes: a list of votes, represented as dictionaries, belonging to
       votes set.
-        output: a file object to print output on.
+        output: a file object to pirint output on.
 
       Returns:
         None. The result is printed on output file and stdout.
   """
   truth = [v['vote'] for v in votes]
   rmse = calculate_rmse(pred, truth) 
-  print "RMSE: %f" % rmse
   print >> output, "RMSE: %f" % rmse
   return rmse
 
@@ -111,26 +114,77 @@ def evaluate_ranking(pred, votes, reviews, output):
   """
   pred_group = {}
   truth_group = {}
+  key_to_reviews = {}
   for i in xrange(len(votes)):
     voter = votes[i]['voter']
     product = reviews[votes[i]['review']]['product']
     key = (voter, product)
     if key not in pred_group:
+      key_to_reviews[key] = []
       pred_group[key] = []
       truth_group[key] =[]
     pred_group[key].append(pred[i])
     truth_group[key].append(votes[i]['vote'])
+    key_to_reviews[key].append(votes[i]['review'])
   scores = [] 
+  goodranks={}
   for i in xrange(1, RANK_SIZE+1):
     sum_scores = 0
+    max_score = 0
+    max_rank = None
+    min_score = float('inf')
+    min_rank = None
     for key in pred_group:
-      sum_scores += calculate_ndcg(pred_group[key], truth_group[key], i)
+      score = calculate_ndcg(pred_group[key], truth_group[key], i)
+      sum_scores += score
     score = sum_scores / len(pred_group)
-    if i % RANK_SIZE == 0:
-      print 'NDCG@%d: %f' % (i, score)
     print >> output, 'NDCG@%d: %f' % (i, score)
     scores.append(score)
   return scores 
+
+
+def evaluate_ranking_err(pred, votes, reviews, output):
+  """ Evaluates predicted values using nDCG@K, with K ranging from 1 to 20,
+      a ranking metric.
+
+      Args:
+        pred: a list of floats with predicted values.
+        votes: a list of votes, represented as dictionaries, belonging to
+      votes set.
+        reviews: a dictionary of reviews.
+        output: a file object to print output on.
+
+      Returns:
+        None. The result is printed on output file and stdout.
+  """
+  pred_group = {}
+  truth_group = {}
+  key_to_reviews = {}
+  for i in xrange(len(votes)):
+    voter = votes[i]['voter']
+    product = reviews[votes[i]['review']]['product']
+    key = (voter, product)
+    if key not in pred_group:
+      key_to_reviews[key] = []
+      pred_group[key] = []
+      truth_group[key] =[]
+    pred_group[key].append(pred[i])
+    truth_group[key].append(votes[i]['vote'])
+    key_to_reviews[key].append(votes[i]['review'])
+  scores = [] 
+  sum_scores = 0
+  max_score = 0
+  max_rank = None
+  min_score = float('inf')
+  min_rank = None
+  for key in pred_group:
+    score = calculate_err(pred_group[key], truth_group[key])
+    sum_scores += score
+  score = sum_scores / len(pred_group)
+  print >> output, 'ERR: %f' % score
+  return score 
+
+
 
 def main():
   """ Main function.
@@ -145,38 +199,58 @@ def main():
   predictor, set_type, rep = parse_args()
   rmse = []
   ndcg = []
+  err = []
   output = open('out/res/%s-%s.dat' % (predictor, set_type), 'w')
   for i in xrange(NUM_SETS):
     rmse_sum = 0
     ndcg_sum = array([0] * RANK_SIZE)
+    err_sum = 0
     repetitions = REP if rep else 1
     print >> output, 'Results on Set Type %d' % (i+1)
     for j in xrange(repetitions):
       votes, pred, reviews = load_data(predictor, set_type, i, j)
       rmse_sum += evaluate_regression(pred, votes, output)
       ndcg_sum = ndcg_sum + array(evaluate_ranking(pred, votes, reviews, output))
+      err_sum += evaluate_ranking_err(pred, votes, reviews, output)
     rmse.append(rmse_sum / repetitions)
     ndcg.append(ndcg_sum / repetitions)
+    err.append(err_sum / repetitions)
     print >> output, '-----'
   if rep:
     for i in xrange(NUM_SETS):
-      print 'RMSE on set %d: %f' % (i+1, rmse[i])
       print >> output, 'RMSE on set %d: %f' % (i+1, rmse[i])
       for j in xrange(len(ndcg[i])):
-        print 'nDCG@%d on set %d: %f' % (j+1, i+1, ndcg[i][j])
         print >> output, 'nDCG@%d on set %d: %f' % (j+1, i+1, ndcg[i][j])
+      print >> output, 'ERR on set %d: %f' % (i+1, err[i])
   mean_rmse = mean(rmse)
   sd_rmse = std(rmse, ddof=1)
-  err = t.cdf(CONF_QT, len(rmse)-1) * sd_rmse / sqrt(len(rmse)-1) 
-  print 'IC of RMSE: (%f, %f)' % (mean_rmse - err, mean_rmse + err)
-  print >> output, 'IC of RMSE: (%f, %f)' % (mean_rmse - err, mean_rmse + err)
+  e = t.ppf(CONF_QT, len(rmse)-1) * sd_rmse / sqrt(len(rmse)) 
+  print 'IC of RMSE: (%f, %f) = %f : %f' % (mean_rmse - e, mean_rmse + e,
+      mean_rmse, e)
+  print >> output, rmse 
+  print >> output, 'IC of RMSE: (%f, %f) = %f : %f' % (mean_rmse - e, mean_rmse
+      + e, mean_rmse, e)
   for i in xrange(RANK_SIZE):
     scores = [score[i] for score in ndcg] 
     mean_ndcg = mean(scores)
     sd_ndcg = std(scores, ddof=1)
-    err = t.cdf(CONF_QT, len(scores)-1) * sd_ndcg / sqrt(len(scores)-1) 
-    print 'IC of nDCG@%d: (%f, %f)' % (i+1, mean_ndcg - err, mean_ndcg + err)
-    print >> output, 'IC of nDCG@%d: (%f, %f)' % (i+1, mean_ndcg - err, mean_ndcg + err)
+    e = t.ppf(CONF_QT, len(scores)-1) * sd_ndcg / sqrt(len(scores)) 
+    print 'IC of nDCG@%d: (%f, %f) = %f : %f' % (i+1, mean_ndcg - e,
+        mean_ndcg + e, mean_ndcg, e)
+    if i + 1 == RANK_SIZE:
+      print scores
+      print >> output, scores
+    print >> output, 'IC of nDCG@%d: (%f, %f) = %f : %f' % (i+1, mean_ndcg - e, 
+        mean_ndcg + e, mean_ndcg, e)
+  mean_err = mean(err)
+  sd_err = std(err, ddof=1)
+  e = t.ppf(CONF_QT, len(err)-1) * sd_err / sqrt(len(err)) 
+  print 'IC of ERR: (%f, %f) = %f : %f' % (mean_err - e, mean_err + e, mean_err,
+      e)
+  print err 
+  print >> output, err
+  print >> output, 'IC of ERR: (%f, %f) = %f : %f' % (mean_err - e, mean_err +
+      e, mean_err, e)
   output.close()
 
 if __name__ == '__main__':

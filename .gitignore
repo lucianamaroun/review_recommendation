@@ -1,6 +1,9 @@
 data/*
 old/*
 out/*
+script/*
+intermediate/*
+src-analysis/*
 \.DS_Store*
 *\.pyc
 *~
@@ -9,6 +12,6 @@ out/*
 *\.mod
 *\.dat
 *\.old
-lib/rlfm*
-lib/svm_rank*
-lib/ranklib*
+lib/*
+\.*
+output/*

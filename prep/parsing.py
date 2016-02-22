@@ -14,7 +14,7 @@ from nltk.tokenize import RegexpTokenizer
 from nltk.corpus import wordnet
 
 
-_FILE = 'data/reviews.txt'
+_FILE = 'data/reviews_filt.txt'
 
 
 def parse_reviews(verbose=False):

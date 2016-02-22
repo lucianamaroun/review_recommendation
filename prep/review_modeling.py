@@ -157,6 +157,8 @@ def get_pos_stats(tags):
   for word, tag in tags:
     if tag == 'FW' or (match('[a-z]+', tag) and wordnet.synsets(tag) == []):
       features['fw_ratio'] += 1.0 # order is important
+    elif tag == 'JJR' or tag == 'RBR':
+      features['num_ratio'] += 1.0
     elif tag.startswith('NN'):
       features['noun_ratio'] += 1.0
     elif tag.startswith('JJ'):
@@ -165,11 +167,9 @@ def get_pos_stats(tags):
       features['adv_ratio'] += 1.0
     elif tag.startswith('VB'):
       features['verb_ratio'] += 1.0
-    elif tag == 'JJR' or tag == 'RBR':
+    elif tag == 'SYM' or match('[' + _SYMBOLS + ']+', word):
       features['comp_ratio'] += 1.0
     elif tag == 'CD':
-      features['num_ratio'] += 1.0
-    elif tag == 'SYM' or match('[' + _SYMBOLS + ']+', word):
       features['sym_ratio'] += 1.0
     elif tag == 'SYM' or tag in _PUNCTUATION:
       features['punct_ratio'] += 1.0

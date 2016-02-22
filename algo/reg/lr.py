@@ -5,12 +5,11 @@
 
     Usage:
       $ python -m algo.reg.lr [-r <regularization>] [-f <feature_set>]
-        [-b <bias>] [-s <solver>]
+        [-b <bias>]
     where:
     <regularization> is a float with the regularization factor, 
-    <feature_set> is in the set ['www', 'cap', 'all'], 
-    <bias> is either 'y' or 'n', and
-    <solver> is the method to solve the optimization problem.
+    <feature_set> is the set of features to use, defined in algo/const.py,
+    <bias> is either 'y' or 'n'.
 """
 
 
@@ -35,7 +34,6 @@ _PKL_DIR = 'out/pkl'
 _FEAT_TYPE = 'cap'
 _BETA = 0.01
 _BIAS = False
-_SOLVER = 'svd'
 
 
 def load_args():
@@ -52,24 +50,20 @@ def load_args():
     if argv[i] == '-r':
       global _BETA
       _BETA = float(argv[i+1])
-    elif argv[i] == '-f' and argv[i+1] in ['www', 'cap', 'all']:
+    elif argv[i] == '-f' and argv[i+1] in REVIEW_FEATS:
       global _FEAT_TYPE
       _FEAT_TYPE = argv[i+1]
     elif argv[i] == '-b' and argv[i+1] in ['y', 'n']:
       global _BIAS
       _BIAS = True if argv[i+1] == 'y' else False
-    elif argv[i] == '-s' and argv[i+1] in ['svd', 'cholesky', 'lsqr',
-        'sparse_cg', 'sag']:
-      global _SOLVER
-      _SOLVER = argv[i+1] 
     else:
-      print ('Usage: $ python -m algo.reg.lr [-r <regularization>]'
-          '[-s <solver>] [-f <feature_set>] [-b <bias>]')
+      print ('Usage: $ python -m algo.reg.lr [-r <regularization>] '
+          '[-f <feature_set>] [-b <bias>]')
       exit()
     i = i + 2
 
 
-def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn):
+def generate_input(reviews, users, sim, conn, revsim, votes, avg_user, avg_sim, avg_conn):
   """ Generates input for the regression problem by turning all features
       associated to each entity into a vector. 
 
@@ -145,6 +139,7 @@ def main():
     train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
     test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
     val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
+    revsim = load(open('%s/revsim-%d.pkl' % (_PKL_DIR, i), 'r'))
     sim = load(open('%s/sim-%d.pkl' % (_PKL_DIR, i), 'r'))
     conn = load(open('%s/conn-%d.pkl' % (_PKL_DIR, i), 'r'))
 
@@ -157,18 +152,18 @@ def main():
     avg_sim = compute_avg_model(sim)
     avg_conn = compute_avg_model(conn)
     X_train, y_train, qid_train = generate_input(reviews, users, sim, conn,
-        train, avg_user, avg_sim, avg_conn)
-    X_val, _, qid_val = generate_input(reviews, users, sim, conn, val, avg_user,
-        avg_sim, avg_conn)
-    X_test, _, qid_test = generate_input(reviews, users, sim, conn, test, 
+        revsim, train, avg_user, avg_sim, avg_conn)
+    X_val, _, qid_val = generate_input(reviews, users, sim, conn, revsim, val,
         avg_user, avg_sim, avg_conn)
+    X_test, _, qid_test = generate_input(reviews, users, sim, conn, revsim,
+        test, avg_user, avg_sim, avg_conn)
 
     scaler = fit_scaler('minmax', X_train)
     X_train = scale_features(scaler, X_train)
     X_val = scale_features(scaler, X_val)
     X_test = scale_features(scaler, X_test)
 
-    model = Ridge(alpha=_BETA, solver=_SOLVER) 
+    model = Ridge(alpha=_BETA) 
         # for standardized notation across algorithms, we consider alpha to be 
         # learning rate of and beta, regularization weight
     model.fit(X_train , y_train)
@@ -184,8 +179,8 @@ def main():
     pred = model.predict(X_val)
     if _BIAS:
       bias.add_bias(val, reviews, pred)
-    output = open('%s/lr-r:%f,f:%s,b:%s,s:%s-%d-%d.dat' % (_VAL_DIR, _BETA,
-        _FEAT_TYPE, 'y' if _BIAS else 'n', _SOLVER, i, 0), 'w')
+    output = open('%s/lr-r:%f,f:%s,b:%s-%d-%d.dat' % (_VAL_DIR, _BETA,
+        _FEAT_TYPE, 'y' if _BIAS else 'n', i, 0), 'w')
     for p in pred:
       print >> output, p
     output.close()
@@ -193,8 +188,8 @@ def main():
     pred = model.predict(X_test)
     if _BIAS:
       bias.add_bias(test, reviews, pred)
-    output = open('%s/lr-r:%f,f:%s,b:%s,s:%s-%d-%d.dat' % (_OUTPUT_DIR, _BETA,
-        _FEAT_TYPE, 'y' if _BIAS else 'n', _SOLVER, i, 0), 'w')
+    output = open('%s/lr-r:%f,f:%s,b:%s,-%d-%d.dat' % (_OUTPUT_DIR, _BETA,
+        _FEAT_TYPE, 'y' if _BIAS else 'n', i, 0), 'w')
     for p in pred:
       print >> output, p
     output.close()

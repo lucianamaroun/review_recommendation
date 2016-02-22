@@ -172,3 +172,105 @@ def calculate_avg_ndcg(votes, reviews, pred, truth, k):
     score_sum += ndcg
   score = score_sum / len(pred_group)
   return score
+
+
+def calculate_ap(pred, truth, k):
+  """ Gets the average precision.
+
+      Observation:
+      - We consider the top-k in true ranking as relevant items. Consquently,
+      there are always k relevant items.
+
+      Args:
+        pred: list of floats with predicted relevances.
+        truth: list of floats (or integers) with true relevances.
+        k: integer with the size of ranking to consider.
+
+      Returns:
+        A real value with the average precition at k.      
+  """
+  i_ranking = sorted(range(len(truth)), key=lambda p: pred[p], reverse=True)
+ # p_ranking = sorted(range(len(pred)), key=lambda p: pred[p], reverse=True)
+ # top = t_ranking[:k]
+ # worst_rel = truth[top[-1]]
+ # for pos in xrange(k, len(t_ranking)):
+ #   index = t_ranking[pos]
+ #   if truth[index] == worst_rel:
+ #     top.append(index)
+ #   else:
+ #     break
+  avg_prec = 0.0 
+  acc = 0.0
+  for i in xrange(k):
+   # if p_ranking[i] in top:
+    if truth[i_ranking[i]] == 5:
+      acc += 1.0
+      avg_prec += (acc / (i+1))
+  avg_prec /= k
+  return avg_prec 
+
+
+def calculate_map(votes, reviews, pred, truth, k):
+  """ Calculates the mean average precision (MAP) by grouping votes in 
+      (user, product) pairs in order to compose rankings.
+
+      Args:
+        votes: set of votes to evaluate through grouping and ranking.
+        reviews: dictionary of reviews.
+        pred: list of floats with predicted relevances for each vote in votes.
+        truth: list of floats (or integers) with true relevances for each vote
+      in votes.
+        k: an integer with the limit position of the ranking to calculate the
+      score.
+
+      Returns:
+        A float in range [0, 1] with MAP@K score.
+  """
+  pred_group = {}
+  truth_group = {}
+  for i, vote in enumerate(votes):
+    voter = vote['voter']
+    product = reviews[vote['review']]['product']
+    key = (voter, product)
+    if key not in pred_group:
+      pred_group[key] = []
+      truth_group[key] =[]
+    pred_group[key].append(pred[i])
+    truth_group[key].append(truth[i])
+  score_sum = 0.0
+  for key in pred_group:
+    ap = calculate_ap(pred_group[key], truth_group[key], k)
+    score_sum += ap 
+  score = score_sum / len(pred_group)
+  return score
+
+def probability_stop(relevance):
+  """ Probability of user stop search given an item of a certain relevance.
+
+      Args:
+        relevance: relevance grade of the item.
+
+      Returns:
+        A value in [0, 1] with probability mapping of relevance.
+  """
+  return (2.0**relevance - 1.0) / 32.0 # denominator 2**5 
+
+def calculate_err(pred, truth):
+  """ Gets the expected reciprocal rank.
+
+      Args:
+        pred: list of floats with predicted relevances.
+        truth: list of floats (or integers) with true relevances.
+
+      Returns:
+        A real value with the ERR.
+  """
+  p_ranking = sorted(range(len(pred)), key=lambda p: pred[p], reverse=True)
+  err = 0.0 
+  p = 1.0
+  for i in xrange(len(p_ranking)):
+    relevance = truth[p_ranking[i]]
+    local_p = probability_stop(relevance)
+    err += p * local_p / (i + 1.0)
+    p *= (1.0 - local_p)
+  return err 

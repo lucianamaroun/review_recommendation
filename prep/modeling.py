@@ -11,7 +11,6 @@
 
 from pickle import load, dump
 
-from prep.sampling import sample_reviews
 from prep.parsing import parse_trusts, parse_reviews
 from prep.review_modeling import model_reviews_parallel
 from prep.user_modeling import model_users
@@ -42,6 +41,23 @@ def model():
 
   print 'Modeling votes'
   votes = model_votes(reviews)
+  dump(votes, open('%s/votes.pkl' % _OUTPUT_DIR, 'w'))
+  print 'Modeling reviews'
+  model_reviews_parallel(_NUM_THREADS, votes, reviews)
+  dump(reviews, open('%s/reviews.pkl' % _OUTPUT_DIR, 'w'))
+  for r_id in reviews:
+    del reviews[r_id]['text']
+  print 'Modeling users'
+  users = model_users(reviews, votes, [], trusts)
+  dump(users, open('%s/users.pkl' % _OUTPUT_DIR, 'w'))
+  del reviews
+  print 'Modeling sim'
+  sim = model_author_voter_similarity(votes, users, [])
+  dump(sim, open('%s/sim.pkl' % _OUTPUT_DIR, 'w'))
+  print 'Modeling conn'
+  conn = model_author_voter_connection(votes, users, trusts, [])
+  dump(conn, open('%s/conn.pkl' % _OUTPUT_DIR, 'w'))
+  
   sets = split_votes(votes)
   for (i, split) in enumerate(sets):
     train, val, test = split

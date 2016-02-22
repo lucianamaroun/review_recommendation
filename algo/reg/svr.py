@@ -18,8 +18,9 @@
 
 from pickle import load
 from sys import argv, exit
+from time import time
 
-from numpy import nan, isnan
+from numpy import nan, isnan, mean
 from numpy.random import binomial
 from sklearn.svm import SVR
 
@@ -63,7 +64,7 @@ def load_args():
     elif argv[i] == '-e':
       global _EPS
       _EPS = float(argv[i+1])
-    elif argv[i] == '-f' and argv[i+1] in ['www', 'cap', 'all']:
+    elif argv[i] == '-f' and argv[i+1] in REVIEW_FEATS:
       global _FEAT_TYPE
       _FEAT_TYPE = argv[i+1]
     elif argv[i] == '-b' and argv[i+1] in ['y', 'n']:
@@ -146,28 +147,18 @@ def predict():
   load_args()
   
   for i in xrange(NUM_SETS):
+    t = time()
+
     print 'Reading data'
-    reviews = load(open('%s/reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
+    reviews = load(open('%s/new-reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
     users = load(open('%s/users-%d.pkl' % (_PKL_DIR, i), 'r'))
     train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
     test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
     val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
-    sim = load(open('%s/sim-%d.pkl' % (_PKL_DIR, i), 'r'))
-    conn = load(open('%s/conn-%d.pkl' % (_PKL_DIR, i), 'r'))
-
-    names = []
-    for feature in REVIEW_FEATS[_FEAT_TYPE]:
-      names.append('r_' + feature)
-    for feature in AUTHOR_FEATS[_FEAT_TYPE]:
-      names.append('a_' + feature)
-    for feature in VOTER_FEATS[_FEAT_TYPE]:
-      names.append('v_' + feature)
-    for feature in SIM_FEATS[_FEAT_TYPE]:
-      names.append('s_' + feature)
-    for feature in CONN_FEATS[_FEAT_TYPE]:
-      names.append('c_' + feature)
-
+    sim = load(open('%s/new-sim-%d.pkl' % (_PKL_DIR, i), 'r'))
+    conn = load(open('%s/new-conn-%d.pkl' % (_PKL_DIR, i), 'r'))
     train_truth = [v['vote'] for v in train] 
+
     if _BIAS:
       bias = BiasModel()
       train = bias.fit_transform(train, reviews)
@@ -187,13 +178,12 @@ def predict():
     X_val = scale_features(scaler, X_val)
     X_test = scale_features(scaler, X_test)
 
+    print 'Formatting input time: %f' % (time() - t)
+
+    t = time()
     model = SVR(C=_C, epsilon=_EPS, kernel=_KERNEL)
     model.fit(X_train , y_train)
-    print 'Intercept: ' + str(model.intercept_)
-    print 'Coefficients: '
-    print model.coef_
-    print sorted([f for f in names], key=lambda f:
-        abs(model.coef_[0,names.index(f)]), reverse=True)
+    print 'Learning time: %f' % (time() - t)
 
     pred = model.predict(X_train)
     if _BIAS:
@@ -213,9 +203,11 @@ def predict():
       print >> output, p
     output.close()
     
+    t = time()
     pred = model.predict(X_test)
     if _BIAS:
       bias.add_bias(test, reviews, pred)
+    print 'Prediction time: %f' % (time() - t)
     output = open('%s/svr-c:%f,k:%s,e:%f,f:%s,b:%s-%d-%d.dat' % 
         (_OUTPUT_DIR, _C, _KERNEL, _EPS, _FEAT_TYPE, 
         'y' if _BIAS else 'n', i, 0), 'w')

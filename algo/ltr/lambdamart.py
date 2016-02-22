@@ -23,7 +23,7 @@ from numpy import nan, isnan
 from pickle import load
 
 from algo.const import NUM_SETS, RANK_SIZE, REP, REVIEW_FEATS, AUTHOR_FEATS, \
-    VOTER_FEATS, SIM_FEATS, CONN_FEATS 
+    VOTER_FEATS, SIM_FEATS, CONN_FEATS
 from perf.metrics import calculate_rmse, calculate_avg_ndcg
 from util.avg_model import compute_avg_user, compute_avg_model 
 from util.bias import BiasModel
@@ -63,7 +63,7 @@ def load_args():
     elif argv[i] == '-t':
       global _T
       _T = int(argv[i+1])
-    elif argv[i] == '-f' and argv[i+1] in ['www', 'cap', 'all']:
+    elif argv[i] == '-f' and argv[i+1] in REVIEW_FEATS: 
       global _FEAT_TYPE
       _FEAT_TYPE = argv[i+1]
     elif argv[i] == '-b' and argv[i+1] in ['y', 'n']:
@@ -191,13 +191,14 @@ def main():
   
   for i in xrange(NUM_SETS):
     print 'Reading data'
-    reviews = load(open('%s/reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
+    reviews = load(open('%s/new-reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
     users = load(open('%s/users-%d.pkl' % (_PKL_DIR, i), 'r'))
     train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
     test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
     val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
-    sim = load(open('%s/sim-%d.pkl' % (_PKL_DIR, i), 'r'))
-    conn = load(open('%s/conn-%d.pkl' % (_PKL_DIR, i), 'r'))
+    sim = load(open('%s/new-sim-%d.pkl' % (_PKL_DIR, i), 'r'))
+    conn = load(open('%s/new-conn-%d.pkl' % (_PKL_DIR, i), 'r'))
+    revsim = load(open('%s/revsim-%d.pkl' % (_PKL_DIR, i), 'r'))
    
     train_truth = [v['vote'] for v in train]
     if _BIAS:
@@ -209,11 +210,11 @@ def main():
     avg_sim = compute_avg_model(sim)
     avg_conn = compute_avg_model(conn)
     X_train, y_train, qid_train = generate_input(reviews, users, sim, conn,
-        train, avg_user, avg_sim, avg_conn)
-    X_val, _, qid_val = generate_input(reviews, users, sim, conn, val, avg_user,
-        avg_sim, avg_conn)
-    X_test, _, qid_test = generate_input(reviews, users, sim, conn, test, 
+        revsim, train, avg_user, avg_sim, avg_conn)
+    X_val, _, qid_val = generate_input(reviews, users, sim, conn, revsim, val, 
         avg_user, avg_sim, avg_conn)
+    X_test, _, qid_test = generate_input(reviews, users, sim, conn, revsim, 
+        test, avg_user, avg_sim, avg_conn)
     
     scaler = fit_scaler('minmax', X_train)
     X_train = scale_features(scaler, X_train)
