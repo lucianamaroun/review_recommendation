@@ -1,7 +1,7 @@
 """ RLFM Module
     -----------
 
-    Applies a Regression-Based Latent Factor Model (RLFM), a recommender
+    Applies a Regression-based Latent Factor Model (RLFM), a recommender
     technique based on linear combination of latent factors, whose distribution
     is centered on the regression of observed features.
 
@@ -14,7 +14,7 @@
     <gibbs_samples> is an integer with number of gibbs samples in each EM 
       iteration,
     <burn_in> is the number of initial discarded samples in each sampling,
-    <feature_set> is in the set ['www', 'cap', 'all'].
+    <feature_set> is the set of features used, defined in algo/const.py. 
 """
 
 
@@ -66,12 +66,12 @@ def load_args():
     elif argv[i] == '-b':
       global _BURN_IN
       _BURN_IN = int(argv[i+1])
-    elif argv[i] == '-f' and argv[i+1] in ['www', 'cap', 'all']:
+    elif argv[i] == '-f' and argv[i+1] in REVIEW_FEATS: 
       global _FEAT
       _FEAT = argv[i+1]
     else:
       print ('Usage: python -m algo.recsys.rlfm [-k <k>] [-i <iterations>] '
-          '[-g <gibb_samples>] [-b <burn_in>] [-f <feature_type>]')
+          '[-g <gibb_samples>] [-b <burn_in>] [-f <feature_set>]')
       exit()
     i = i + 2
   global _CONF_STR

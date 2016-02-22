@@ -17,7 +17,7 @@
       randomization,
     <max_feat> is an integer with the number of features used in each tree
       building, allowing randomization,
-    <feature_set> is in the set ['www', 'cap', 'all'], and 
+    <feature_set> is the set of features to use, defined in algo/const.py, 
     <bias> is either 'y' or 'n'.
 """
 

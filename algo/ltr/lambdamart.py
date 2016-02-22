@@ -1,4 +1,4 @@
-""" LambdaMart
+""" LambdaMART
     ----------
 
     Applies a LambdaMART, a pairwise learning to rank technique, for
@@ -11,7 +11,7 @@
     <learning_rate> is a float which update step in each stage,
     <leaves> is the number of leaves of each tree (2^depth - 1),
     <trees> is the number of trees to build the model with,
-    <feature_set> is in the set ['www', 'cap', 'all'], and 
+    <feature_set> is the set of features used, defined in algo/const.py, 
     <bias> is either 'y' or 'n'.
 """
 
@@ -107,9 +107,9 @@ def output_model(X, y, qid, outfile):
   """ Outputs the model to a file, with one vote in each line.
 
       Args:
-        X: list of feature lists
+        X: list of feature lists,
         y: list of truth values (might be None, in which case it does not matter
-      the truth, for validation and test)
+      the truth, for validation and test).
         qid: list of query ids associated to each instance.
         outfile: file descriptior to output.
 
@@ -191,14 +191,13 @@ def main():
   
   for i in xrange(NUM_SETS):
     print 'Reading data'
-    reviews = load(open('%s/new-reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
+    reviews = load(open('%s/reviews-%d.pkl' % (_PKL_DIR, i), 'r'))
     users = load(open('%s/users-%d.pkl' % (_PKL_DIR, i), 'r'))
     train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
     test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
     val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
-    sim = load(open('%s/new-sim-%d.pkl' % (_PKL_DIR, i), 'r'))
-    conn = load(open('%s/new-conn-%d.pkl' % (_PKL_DIR, i), 'r'))
-    revsim = load(open('%s/revsim-%d.pkl' % (_PKL_DIR, i), 'r'))
+    sim = load(open('%s/sim-%d.pkl' % (_PKL_DIR, i), 'r'))
+    conn = load(open('%s/conn-%d.pkl' % (_PKL_DIR, i), 'r'))
    
     train_truth = [v['vote'] for v in train]
     if _BIAS:
@@ -210,10 +209,10 @@ def main():
     avg_sim = compute_avg_model(sim)
     avg_conn = compute_avg_model(conn)
     X_train, y_train, qid_train = generate_input(reviews, users, sim, conn,
-        revsim, train, avg_user, avg_sim, avg_conn)
-    X_val, _, qid_val = generate_input(reviews, users, sim, conn, revsim, val, 
+        train, avg_user, avg_sim, avg_conn)
+    X_val, _, qid_val = generate_input(reviews, users, sim, conn, val, 
         avg_user, avg_sim, avg_conn)
-    X_test, _, qid_test = generate_input(reviews, users, sim, conn, revsim, 
+    X_test, _, qid_test = generate_input(reviews, users, sim, conn, 
         test, avg_user, avg_sim, avg_conn)
     
     scaler = fit_scaler('minmax', X_train)

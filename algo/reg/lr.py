@@ -63,7 +63,7 @@ def load_args():
     i = i + 2
 
 
-def generate_input(reviews, users, sim, conn, revsim, votes, avg_user, avg_sim, avg_conn):
+def generate_input(reviews, users, sim, conn, votes, avg_user, avg_sim, avg_conn):
   """ Generates input for the regression problem by turning all features
       associated to each entity into a vector. 
 
@@ -139,7 +139,6 @@ def main():
     train = load(open('%s/train-%d.pkl' % (_PKL_DIR, i), 'r'))
     test = load(open('%s/test-%d.pkl' % (_PKL_DIR, i), 'r'))
     val = load(open('%s/validation-%d.pkl' % (_PKL_DIR, i), 'r'))
-    revsim = load(open('%s/revsim-%d.pkl' % (_PKL_DIR, i), 'r'))
     sim = load(open('%s/sim-%d.pkl' % (_PKL_DIR, i), 'r'))
     conn = load(open('%s/conn-%d.pkl' % (_PKL_DIR, i), 'r'))
 
@@ -152,10 +151,10 @@ def main():
     avg_sim = compute_avg_model(sim)
     avg_conn = compute_avg_model(conn)
     X_train, y_train, qid_train = generate_input(reviews, users, sim, conn,
-        revsim, train, avg_user, avg_sim, avg_conn)
-    X_val, _, qid_val = generate_input(reviews, users, sim, conn, revsim, val,
+        train, avg_user, avg_sim, avg_conn)
+    X_val, _, qid_val = generate_input(reviews, users, sim, conn, val,
         avg_user, avg_sim, avg_conn)
-    X_test, _, qid_test = generate_input(reviews, users, sim, conn, revsim,
+    X_test, _, qid_test = generate_input(reviews, users, sim, conn,
         test, avg_user, avg_sim, avg_conn)
 
     scaler = fit_scaler('minmax', X_train)

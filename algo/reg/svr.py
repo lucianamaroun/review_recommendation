@@ -11,7 +11,7 @@
     <kernel> is in the set ['rbf', 'linear', 'sigmoid', 'poly'],
     <epsilon> is the error tolerance which are not considered until this
       distance,
-    <feature_set> is in the set ['www', 'cap', 'all'], and 
+    <feature_set> is a set of features, defined in algo/const.py, 
     <bias> is either 'y' or 'n'.
 """
 

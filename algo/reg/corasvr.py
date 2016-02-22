@@ -119,7 +119,7 @@ class CoRaSVR_Model(object):
     """ Initializes coefficients and adds constant to matrix of features.
 
         Args:
-          votes: list of votes (training set).
+          X: numpy array with feature arrays in rows (training set).
         
         Returns:
           Matrix of features as an array and with additional constant dimension. 
@@ -134,7 +134,10 @@ class CoRaSVR_Model(object):
     """ Fits a model given training set (votes).
 
         Args:
-          vote: list of votes, represented as dictionaries (training set).
+          X: numpy array with feature arrays in rows (training set).
+          y: list of responses, in the same order of X.
+          qid: list of query ids (associated to each reader-product pair), in 
+            the same order of X.
         
         Returns:
           None. Instance fields are updated.
@@ -205,8 +208,7 @@ class CoRaSVR_Model(object):
     """ Predicts a set of vote examples using previous fitted model.
 
         Args:
-          votes: list of dictionaries, representing votes, to predict
-        helpfulness vote value.
+          X: numpy array with a vector of features per row.
 
         Returns:
           A list of floats with predicted vote values.
