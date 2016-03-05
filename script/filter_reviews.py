@@ -5,7 +5,7 @@ from numpy import mean, nan
 from nltk.tokenize import RegexpTokenizer
 from nltk.corpus import wordnet
 
-from preprocessing.parsing import parse_votes
+from prep.parsing import parse_votes
 
 _FILE = 'data/rating.txt'
 _NEWFILE = 'data/reviews.txt'
@@ -43,6 +43,7 @@ for line in f:
     review = {}
     review['id'] = review_count
     review_count += 1
+    review['author'] = l[0].strip()
     if not l[0].strip():
       raise Exception('author')
     if not l[1].strip():
@@ -60,21 +61,17 @@ for line in f:
     if not l[6].strip() or get_foreign_ratio(l[6].strip()) >= 0.4:
       raise Exception('text')
     try:
-      review['votes'] = parse_votes(l[7])
+      review['votes'] = parse_votes(l[7], review['author'])
     except Exception:
       raise Exception('votes')
     if not review['votes']:
       raise Exception('votes')
   except Exception as e:
-    print 'Exception on parsing review, line %d, type %s' % (count_lines,
-        e.args[0])
-    print l
-    print '--------------------------'
     count_ignored += 1
     if e.args[0] in type_ignored:
       type_ignored[e.args[0]] += 1
     continue
-  print >> output, line 
+  print >> output, line.strip()
 
 print '#############################'
 print 'Summary of Filtering:'

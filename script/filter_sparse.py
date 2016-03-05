@@ -5,10 +5,10 @@ from numpy import mean, nan
 from nltk.tokenize import RegexpTokenizer
 from nltk.corpus import wordnet
 
-from preprocessing.parsing import parse_votes
+from prep.parsing import parse_votes
 
 _FILE = 'data/reviews.txt'
-_NEWFILE = 'data/reviews_filt.txt'
+_NEWFILE = 'data/reviews_filtered.txt'
 
 
 f = open(_FILE, 'r')
@@ -38,7 +38,7 @@ for line in f:
     voter = str_vote.split(':')[0]
     if (product, voter) in sel_keys:
       new_str_votes.append(str_vote)
-  if len(new_str_votes) < 0:
+  if len(new_str_votes) <= 0:
     # no vote of this review are included, ignore review
     continue
   new_str_votes.append('</endperson>')

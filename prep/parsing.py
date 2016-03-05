@@ -14,7 +14,7 @@ from nltk.tokenize import RegexpTokenizer
 from nltk.corpus import wordnet
 
 
-_FILE = 'data/reviews_filt.txt'
+_FILE = 'data/reviews_filtered.txt'
 
 
 def parse_reviews(verbose=False):
@@ -112,10 +112,10 @@ def parse_reviews(verbose=False):
 """
 def parse_votes(raw_votes, author):
     votes = {}
-    str_votes = raw_votes.split(':::')
+    str_votes = raw_votes.strip().split(':::')
 
     for vote in str_votes:
-      if vote == '</endperson>':
+      if vote.startswith('</endperson>'):
         break
       user, help_vote = vote.split(':')
       help_vote = int(help_vote)
