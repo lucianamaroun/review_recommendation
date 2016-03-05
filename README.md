@@ -23,7 +23,7 @@ python -m script.filter_sparse
 
 Where the first ignores invalid reviews and the second ignore reviews in too small rankings and reviews file is  data/rating.txt.
 
-This step may be ignored if a filtered dataset is available at hand. We made publicly available a <a href="http://homepages.dcc.ufmg.br/~lubm/review/reviews_filt.tar.gz">filtered dataset</a> of a crawl from Ciao [1], whose format we use. The <a href="http://www.jiliang.xyz/Ciao.rar">original unfiltered dataset</a> is also disclosed by the authors.
+This step may be ignored if a filtered dataset is available at hand. We made publicly available a <a href="http://homepages.dcc.ufmg.br/~lubm/review/reviews_filtered.tar.gz">filtered dataset</a> of a crawl from Ciao [1], whose format we use. The <a href="http://www.jiliang.xyz/Ciao.rar">original unfiltered dataset</a> is also disclosed by the authors, which contains the trust network.
 
 [1] Jiliang Tang, Huiji Gao, Xia Hu, and Huan Liu. 2013. Context-aware review helpfulness rating prediction. In Procs. of RecSys '13.
 
